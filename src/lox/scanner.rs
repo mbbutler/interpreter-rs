@@ -1,12 +1,31 @@
-use std::{collections::HashMap, hash::Hash, str::Chars, sync::OnceLock};
+use std::{collections::HashMap, fmt::Display, str::Chars, sync::LazyLock};
 
 use itertools::{peek_nth, PeekNth};
 
-use super::error::ParseError;
+use super::error::ScanError;
 
-static KEYWORDS: OnceLock<HashMap<&str, TokenType>> = OnceLock::new();
+static KEYWORDS: LazyLock<HashMap<&str, TokenType>> = LazyLock::new(|| {
+    let mut keywords = HashMap::new();
+    keywords.insert("and", TokenType::And);
+    keywords.insert("class", TokenType::Class);
+    keywords.insert("else", TokenType::Else);
+    keywords.insert("false", TokenType::False);
+    keywords.insert("for", TokenType::For);
+    keywords.insert("fun", TokenType::Fun);
+    keywords.insert("if", TokenType::If);
+    keywords.insert("nil", TokenType::Nil);
+    keywords.insert("or", TokenType::Or);
+    keywords.insert("print", TokenType::Print);
+    keywords.insert("return", TokenType::Return);
+    keywords.insert("super", TokenType::Super);
+    keywords.insert("this", TokenType::This);
+    keywords.insert("true", TokenType::True);
+    keywords.insert("var", TokenType::Var);
+    keywords.insert("while", TokenType::While);
+    keywords
+});
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -57,27 +76,39 @@ pub enum TokenType {
     EOF,
 }
 
-#[derive(Debug)]
-pub enum Literal<'a> {
-    String(&'a str),
+#[derive(Debug, Clone)]
+pub enum Literal {
+    String(String),
     Number(f64),
     Bool(bool),
+    Nil,
 }
 
-#[derive(Debug)]
-pub struct Token<'a> {
-    t_type: TokenType,
-    lexeme: &'a str,
-    literal: Option<Literal<'a>>,
-    col: usize,
-    line: usize,
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(s) => write!(f, "\"{s}\""),
+            Self::Number(n) => write!(f, "{n}"),
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Nil => write!(f, "nill"),
+        }
+    }
 }
 
-pub struct Parser<'a> {
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub t_type: TokenType,
+    pub lexeme: String,
+    pub literal: Option<Literal>,
+    pub col: usize,
+    pub line: usize,
+}
+
+pub struct Scanner<'a> {
     had_error: bool,
     source: &'a str,
     chars: PeekNth<Chars<'a>>,
-    tokens: Vec<Token<'a>>,
+    tokens: Vec<Token>,
     start: usize,
     current: usize,
     line_start: usize,
@@ -85,7 +116,7 @@ pub struct Parser<'a> {
     line: usize,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             had_error: false,
@@ -106,6 +137,8 @@ impl<'a> Parser<'a> {
             self.scan_token();
         }
 
+        self.add_token(TokenType::EOF, None);
+
         if !self.had_error {
             Ok(&self.tokens)
         } else {
@@ -114,46 +147,25 @@ impl<'a> Parser<'a> {
     }
 
     fn lexeme(&self) -> &str {
-        &self.source[self.line_start..self.current]
+        &self.source[self.start..self.current]
     }
 
-    fn check_keyword(&self, key: &str) -> Option<&TokenType> {
-        KEYWORDS
-            .get_or_init(|| {
-                let mut keywords = HashMap::new();
-                keywords.insert("and", TokenType::And);
-                keywords.insert("class", TokenType::Class);
-                keywords.insert("else", TokenType::Else);
-                keywords.insert("false", TokenType::False);
-                keywords.insert("for", TokenType::For);
-                keywords.insert("fun", TokenType::Fun);
-                keywords.insert("if", TokenType::If);
-                keywords.insert("nil", TokenType::Nil);
-                keywords.insert("or", TokenType::Or);
-                keywords.insert("print", TokenType::Print);
-                keywords.insert("return", TokenType::Return);
-                keywords.insert("super", TokenType::Super);
-                keywords.insert("this", TokenType::This);
-                keywords.insert("true", TokenType::True);
-                keywords.insert("var", TokenType::Var);
-                keywords.insert("while", TokenType::While);
-                keywords
-            })
-            .get(key)
+    fn check_keyword(&self, key: &str) -> Option<&'static TokenType> {
+        KEYWORDS.get(key)
     }
 
     fn record_error(&mut self, msg: String) {
         self.had_error = true;
         eprintln!(
             "{}",
-            ParseError::new(msg, self.lexeme(), self.col, self.line,)
+            ScanError::new(msg, self.lexeme(), self.col, self.line,)
         )
     }
 
-    fn add_token(&mut self, t_type: TokenType, literal: Option<Literal<'a>>) {
+    fn add_token(&mut self, t_type: TokenType, literal: Option<Literal>) {
         self.tokens.push(Token {
             t_type,
-            lexeme: &self.source[self.start..self.current],
+            lexeme: self.source[self.start..self.current].to_string(),
             literal,
             col: self.col,
             line: self.line,
@@ -161,14 +173,11 @@ impl<'a> Parser<'a> {
     }
 
     fn matches(&mut self, pred: impl FnOnce(&char) -> bool) -> Option<char> {
-        self.chars
-            .next_if(pred)
-            .map(|c| {
-                self.current += c.len_utf8();
-                self.col += 1;
-                Some(c)
-            })
-            .unwrap_or(None)
+        self.chars.next_if(pred).and_then(|c| {
+            self.current += c.len_utf8();
+            self.col += 1;
+            Some(c)
+        })
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -192,7 +201,7 @@ impl<'a> Parser<'a> {
             self.add_token(
                 TokenType::String,
                 Some(Literal::String(
-                    &self.source[(self.start + 1)..(self.current - 1)],
+                    self.source[(self.start + 1)..(self.current - 1)].to_string(),
                 )),
             )
         } else {
@@ -210,14 +219,16 @@ impl<'a> Parser<'a> {
     }
 
     fn number(&mut self) {
-        while self.matches(|&c| c.is_numeric()).is_some() {}
-        if self.chars.peek() == Some(&'.') {
-            if let Some(&c) = self.chars.peek_nth(1) {
-                if c.is_numeric() {
-                    self.advance();
-                    while self.matches(|&c| c.is_numeric()).is_some() {}
-                }
-            }
+        while self.matches(char::is_ascii_digit).is_some() {}
+        if self.chars.peek() == Some(&'.')
+            && self
+                .chars
+                .peek_nth(1)
+                .map(char::is_ascii_digit)
+                .unwrap_or(false)
+        {
+            self.advance();
+            while self.matches(char::is_ascii_digit).is_some() {}
         }
         if let Ok(number) = self.lexeme().parse::<f64>() {
             self.add_token(TokenType::Number, Some(Literal::Number(number)))
@@ -275,7 +286,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 c if c.is_alphabetic() => self.identifier(),
-                c if c.is_numeric() => self.number(),
+                c if c.is_ascii_digit() => self.number(),
                 '"' => self.string(),
                 '\n' => {
                     self.line += 1;
