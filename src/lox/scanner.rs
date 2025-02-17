@@ -51,7 +51,7 @@ pub enum TokenType {
     LessEqual,
 
     // Literals.
-    Ident,
+    Identifier,
     String,
     Number,
 
@@ -73,7 +73,7 @@ pub enum TokenType {
     Var,
     While,
 
-    EOF,
+    Eof,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ pub struct Token {
     pub t_type: TokenType,
     pub lexeme: String,
     pub literal: Option<Literal>,
-    pub col: usize,
+    // pub col: usize,
     pub line: usize,
 }
 
@@ -137,7 +137,7 @@ impl<'a> Scanner<'a> {
             self.scan_token();
         }
 
-        self.add_token(TokenType::EOF, None);
+        self.add_token(TokenType::Eof, None);
 
         if !self.had_error {
             Ok(&self.tokens)
@@ -167,24 +167,22 @@ impl<'a> Scanner<'a> {
             t_type,
             lexeme: self.source[self.start..self.current].to_string(),
             literal,
-            col: self.col,
+            // col: self.col,
             line: self.line,
         });
     }
 
     fn matches(&mut self, pred: impl FnOnce(&char) -> bool) -> Option<char> {
-        self.chars.next_if(pred).and_then(|c| {
+        self.chars.next_if(pred).inspect(|c| {
             self.current += c.len_utf8();
             self.col += 1;
-            Some(c)
         })
     }
 
     fn advance(&mut self) -> Option<char> {
-        self.chars.next().map(|c| {
+        self.chars.next().inspect(|c| {
             self.current += c.len_utf8();
             self.col += 1;
-            c
         })
     }
 
@@ -212,9 +210,9 @@ impl<'a> Scanner<'a> {
     fn identifier(&mut self) {
         while self.matches(|&c| c.is_alphanumeric() || c == '_').is_some() {}
         if let Some(t_type) = self.check_keyword(self.lexeme()) {
-            self.add_token(t_type.clone(), None)
+            self.add_token(*t_type, None)
         } else {
-            self.add_token(TokenType::Ident, None);
+            self.add_token(TokenType::Identifier, None);
         }
     }
 

@@ -2,23 +2,23 @@ use std::fmt::Display;
 
 use super::scanner::{Token, TokenType};
 
-pub type LoxResult<'a, T> = std::result::Result<T, LoxError<'a>>;
+// pub type LoxResult<'a, T> = std::result::Result<T, LoxError<'a>>;
 
-pub enum LoxError<'a> {
-    Scanner(ScanError<'a>),
-    Parser(ParseError),
-    Runtime(RuntimeError<'a>),
-}
+// pub enum LoxError<'a> {
+//     Scanner(ScanError<'a>),
+//     Parser(ParseError),
+//     Runtime(RuntimeError<'a>),
+// }
 
-impl<'a> Display for LoxError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Scanner(err) => write!(f, "{}", err),
-            Self::Parser(err) => write!(f, "{}", err),
-            Self::Runtime(err) => write!(f, "{}", err),
-        }
-    }
-}
+// impl<'a> Display for LoxError<'a> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Self::Scanner(err) => write!(f, "{}", err),
+//             Self::Parser(err) => write!(f, "{}", err),
+//             Self::Runtime(err) => write!(f, "{}", err),
+//         }
+//     }
+// }
 
 pub struct ScanError<'a> {
     msg: String,
@@ -64,7 +64,7 @@ impl ParseError {
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.token.t_type {
-            TokenType::EOF => write!(f, "[line {}] Error at end: {}", self.token.line, self.msg),
+            TokenType::Eof => write!(f, "[line {}] Error at end: {}", self.token.line, self.msg),
             _ => write!(
                 f,
                 "[line {}] Error at '{}': {}",
@@ -76,11 +76,11 @@ impl Display for ParseError {
 
 pub struct RuntimeError<'a> {
     token: &'a Token,
-    msg: &'a str,
+    msg: String,
 }
 
 impl<'a> RuntimeError<'a> {
-    pub fn new(token: &'a Token, msg: &'a str) -> Self {
+    pub fn new(token: &'a Token, msg: String) -> Self {
         RuntimeError { token, msg }
     }
 }
@@ -90,7 +90,7 @@ impl Display for RuntimeError<'_> {
         write!(
             f,
             "[line {}] Error at '{}': {}",
-            self.token.line, self.token.lexeme, self.msg
+            self.token.line, self.token.lexeme, &self.msg
         )
     }
 }

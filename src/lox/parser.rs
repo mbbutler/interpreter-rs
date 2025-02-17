@@ -17,20 +17,65 @@ impl<'a> Parser<'a> {
         Self { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> ParserResult<Vec<Stmt>> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, Vec<ParseError>> {
         let mut statements = Vec::new();
+        let mut errors = Vec::new();
         while !self.is_at_end() {
-            statements.push(self.statement()?);
+            match self.declaration() {
+                Ok(declaration) => statements.push(declaration),
+                Err(err) => {
+                    errors.push(err);
+                    self.synchronize();
+                }
+            }
         }
-        Ok(statements)
+        if errors.is_empty() {
+            Ok(statements)
+        } else {
+            eprintln!("Parsed Stmts: {:?}", statements);
+            Err(errors)
+        }
+    }
+
+    fn declaration(&mut self) -> ParserResult<Stmt> {
+        if self.match_t_types(&[TokenType::Var]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn var_declaration(&mut self) -> ParserResult<Stmt> {
+        let name = self.consume(&TokenType::Identifier, "Expect variable name.")?;
+        let initializer = if self.match_t_types(&[TokenType::Equal]) {
+            self.expression()?
+        } else {
+            Expr::Literal(Literal::Nil)
+        };
+        self.consume(
+            &TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
+        Ok(Stmt::Var { name, initializer })
     }
 
     fn statement(&mut self) -> ParserResult<Stmt> {
         if self.match_t_types(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_t_types(&[TokenType::LeftBrace]) {
+            Ok(Stmt::Block(self.block()?))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn block(&mut self) -> ParserResult<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&TokenType::RightBrace, "Expect '}' after block.")?;
+        Ok(statements)
     }
 
     fn print_statement(&mut self) -> ParserResult<Stmt> {
@@ -46,7 +91,28 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
-        self.equality()
+        self.assgnment()
+    }
+
+    fn assgnment(&mut self) -> ParserResult<Expr> {
+        let expr = self.equality()?;
+        if self.match_t_types(&[TokenType::Equal]) {
+            let equals = self.previous().to_owned();
+            let value = self.assgnment()?;
+            if let Expr::Variable(name) = expr {
+                Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                })
+            } else {
+                Err(ParseError::new(
+                    equals,
+                    "Invalid assignment target.".to_string(),
+                ))
+            }
+        } else {
+            Ok(expr)
+        }
     }
 
     fn equality(&mut self) -> ParserResult<Expr> {
@@ -56,7 +122,7 @@ impl<'a> Parser<'a> {
             let right = self.comparison()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -75,7 +141,7 @@ impl<'a> Parser<'a> {
             let right = self.term()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -89,7 +155,7 @@ impl<'a> Parser<'a> {
             let right = self.factor()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -103,7 +169,7 @@ impl<'a> Parser<'a> {
             let right = self.unary()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -115,7 +181,7 @@ impl<'a> Parser<'a> {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
             Ok(Expr::Unary {
-                operator: operator,
+                operator,
                 right: Box::new(right),
             })
         } else {
@@ -124,28 +190,16 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> ParserResult<Expr> {
-        let next = self.peek();
+        let next = self.advance();
         match next.t_type {
-            TokenType::False => {
-                self.advance();
-                Ok(Expr::Literal(Literal::Bool(false)))
-            }
-            TokenType::True => {
-                self.advance();
-                Ok(Expr::Literal(Literal::Bool(true)))
-            }
-            TokenType::Nil => {
-                self.advance();
-                Ok(Expr::Literal(Literal::Nil))
-            }
-            TokenType::Number | TokenType::String => {
-                self.advance();
-                Ok(Expr::Literal(
-                    self.previous().literal.as_ref().unwrap().to_owned(),
-                ))
-            }
+            TokenType::False => Ok(Expr::Literal(Literal::Bool(false))),
+            TokenType::True => Ok(Expr::Literal(Literal::Bool(true))),
+            TokenType::Nil => Ok(Expr::Literal(Literal::Nil)),
+            TokenType::Number | TokenType::String => Ok(Expr::Literal(
+                self.previous().literal.as_ref().unwrap().to_owned(),
+            )),
+            TokenType::Identifier => Ok(Expr::Variable(self.previous().to_owned())),
             TokenType::LeftParen => {
-                self.advance();
                 let expr = self.expression()?;
                 self.consume(&TokenType::RightParen, "Expect ')' after expression.")?;
                 Ok(Expr::Grouping(Box::new(expr)))
@@ -171,7 +225,7 @@ impl<'a> Parser<'a> {
         if self.is_at_end() {
             false
         } else {
-            &self.peek().t_type == t_type
+            self.peek().t_type == *t_type
         }
     }
 
@@ -195,7 +249,7 @@ impl<'a> Parser<'a> {
     }
 
     fn is_at_end(&self) -> bool {
-        self.peek().t_type == TokenType::EOF
+        self.peek().t_type == TokenType::Eof
     }
 
     fn peek(&self) -> &Token {

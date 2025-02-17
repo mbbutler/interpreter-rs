@@ -2,10 +2,11 @@ use std::fmt::Display;
 
 use super::scanner::{Literal, Token};
 
+#[derive(Debug)]
 pub enum Expr {
-    Unary {
-        operator: Token,
-        right: Box<Expr>,
+    Assign {
+        name: Token,
+        value: Box<Expr>,
     },
     Binary {
         left: Box<Expr>,
@@ -14,19 +15,26 @@ pub enum Expr {
     },
     Grouping(Box<Expr>),
     Literal(Literal),
+    Unary {
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Variable(Token),
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unary { operator, right } => write!(f, "({} {})", operator.lexeme, right),
+            Self::Assign { name, value } => write!(f, "{} = {}", name.lexeme, value),
             Self::Binary {
                 left,
                 operator,
                 right,
             } => write!(f, "({} {} {})", operator.lexeme, left, right),
-            Self::Grouping(expr) => write!(f, "(group {})", expr),
-            Self::Literal(literal) => write!(f, "{}", literal),
+            Self::Grouping(expr) => write!(f, "(group {expr})"),
+            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::Unary { operator, right } => write!(f, "({} {})", operator.lexeme, right),
+            Self::Variable(token) => write!(f, "{}", token.lexeme),
         }
     }
 }
@@ -45,7 +53,7 @@ mod expr_tests {
                     t_type: TokenType::Minus,
                     lexeme: "-".to_string(),
                     literal: None,
-                    col: 0,
+                    // col: 0,
                     line: 0,
                 },
                 right: Box::new(Expr::Literal(Literal::Number(123.0))),
@@ -54,7 +62,7 @@ mod expr_tests {
                 t_type: TokenType::Star,
                 lexeme: "*".to_string(),
                 literal: None,
-                col: 0,
+                // col: 0,
                 line: 0,
             },
             right: Box::new(Expr::Grouping(Box::new(Expr::Literal(Literal::Number(

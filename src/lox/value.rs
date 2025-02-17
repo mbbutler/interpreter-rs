@@ -20,7 +20,7 @@ impl Value {
             (Self::String(lhs), Self::String(rhs)) => Ok(Self::String(format!("{lhs}{rhs}"))),
             _ => Err(RuntimeError::new(
                 operator,
-                "Operands must both be numbers or strings.",
+                "Operands must both be numbers or strings.".to_string(),
             )),
         }
     }
@@ -28,56 +28,80 @@ impl Value {
     pub fn checked_sub<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Number(lhs - rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_mul<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Number(lhs * rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_div<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Number(lhs / rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_gt<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs > rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_gte<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs >= rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_lt<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs < rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_lte<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
             (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs >= rhs)),
-            _ => Err(RuntimeError::new(operator, "Operands must be numbers.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operands must be numbers.".to_string(),
+            )),
         }
     }
 
     pub fn checked_negate<'a>(&self, operator: &'a Token) -> RuntimeResult<'a, Value> {
         match self {
             Self::Number(n) => Ok(Self::Number(-n)),
-            _ => Err(RuntimeError::new(operator, "Operand must be a number.")),
+            _ => Err(RuntimeError::new(
+                operator,
+                "Operand must be a number.".to_string(),
+            )),
         }
     }
 
