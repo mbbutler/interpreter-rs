@@ -1,9 +1,5 @@
 use super::{
-    environment::Environment,
-    error::RuntimeError,
-    expr::Expr,
-    scanner::{Literal, TokenType},
-    stmt::Stmt,
+    environment::Environment, error::RuntimeError, expr::Expr, scanner::TokenType, stmt::Stmt,
     value::Value,
 };
 
@@ -27,16 +23,32 @@ impl Interpreter {
             Stmt::Block(statements) => {
                 self.execute_block(statements)?;
             }
-            Stmt::Print { expr } => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if self.evaluate(condition)?.is_truthy() {
+                    self.execute(then_branch)?;
+                } else if let Some(else_branch) = else_branch {
+                    self.execute(else_branch)?;
+                }
+            }
+            Stmt::Print(expr) => {
                 let value = self.evaluate(expr)?;
                 println!("{value}");
             }
-            Stmt::Expression { expr } => {
+            Stmt::Expression(expr) => {
                 self.evaluate(expr)?;
             }
             Stmt::Var { name, initializer } => {
                 let value = self.evaluate(initializer)?;
                 self.environment.define(&name.lexeme, value);
+            }
+            Stmt::While { condition, body } => {
+                while self.evaluate(condition)?.is_truthy() {
+                    self.execute(body)?;
+                }
             }
         }
         Ok(())
@@ -77,22 +89,32 @@ impl Interpreter {
                     TokenType::GreaterEqual => left.checked_gte(operator, &right),
                     TokenType::Less => left.checked_lt(operator, &right),
                     TokenType::LessEqual => left.checked_lte(operator, &right),
-                    TokenType::BangEqual => Ok(Value::Boolean(left != right)),
-                    TokenType::EqualEqual => Ok(Value::Boolean(left == right)),
+                    TokenType::BangEqual => Ok(Value::Bool(left != right)),
+                    TokenType::EqualEqual => Ok(Value::Bool(left == right)),
                     _ => unreachable!("Invalid Binary expression: {expr}"),
                 }
             }
             Expr::Grouping(expr) => self.evaluate(expr),
-            Expr::Literal(lit) => Ok(match lit {
-                Literal::Bool(b) => Value::Boolean(*b),
-                Literal::Number(n) => Value::Number(*n),
-                Literal::String(s) => Value::String(s.to_string()),
-                Literal::Nil => Value::Nil,
-            }),
+            Expr::Literal(value) => Ok(value.to_owned()),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left = self.evaluate(left)?;
+                if let TokenType::Or = operator.t_type {
+                    if left.is_truthy() {
+                        return Ok(left);
+                    }
+                } else if !left.is_truthy() {
+                    return Ok(left);
+                }
+                self.evaluate(right)
+            }
             Expr::Unary { operator, right } => {
                 let right = self.evaluate(right)?;
                 match operator.t_type {
-                    TokenType::Bang => Ok(!right.is_truthy()),
+                    TokenType::Bang => Ok(right.not()),
                     TokenType::Minus => right.checked_negate(operator),
                     _ => unreachable!("Invalid Unary expression: {expr}"),
                 }

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fmt::Display, str::Chars, sync::LazyLock};
+use std::{collections::HashMap, str::Chars, sync::LazyLock};
 
 use itertools::{peek_nth, PeekNth};
 
-use super::error::ScanError;
+use super::{error::ScanError, value::Value};
 
 static KEYWORDS: LazyLock<HashMap<&str, TokenType>> = LazyLock::new(|| {
     let mut keywords = HashMap::new();
@@ -77,29 +77,10 @@ pub enum TokenType {
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal {
-    String(String),
-    Number(f64),
-    Bool(bool),
-    Nil,
-}
-
-impl Display for Literal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(s) => write!(f, "\"{s}\""),
-            Self::Number(n) => write!(f, "{n}"),
-            Self::Bool(b) => write!(f, "{b}"),
-            Self::Nil => write!(f, "nill"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Token {
     pub t_type: TokenType,
     pub lexeme: String,
-    pub literal: Option<Literal>,
+    pub literal: Option<Value>,
     // pub col: usize,
     pub line: usize,
 }
@@ -162,7 +143,7 @@ impl<'a> Scanner<'a> {
         )
     }
 
-    fn add_token(&mut self, t_type: TokenType, literal: Option<Literal>) {
+    fn add_token(&mut self, t_type: TokenType, literal: Option<Value>) {
         self.tokens.push(Token {
             t_type,
             lexeme: self.source[self.start..self.current].to_string(),
@@ -198,7 +179,7 @@ impl<'a> Scanner<'a> {
             self.advance();
             self.add_token(
                 TokenType::String,
-                Some(Literal::String(
+                Some(Value::String(
                     self.source[(self.start + 1)..(self.current - 1)].to_string(),
                 )),
             )
@@ -229,7 +210,7 @@ impl<'a> Scanner<'a> {
             while self.matches(char::is_ascii_digit).is_some() {}
         }
         if let Ok(number) = self.lexeme().parse::<f64>() {
-            self.add_token(TokenType::Number, Some(Literal::Number(number)))
+            self.add_token(TokenType::Number, Some(Value::Number(number)))
         } else {
             self.record_error(format!("Invalid number: {}.", self.lexeme()));
         }

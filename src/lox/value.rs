@@ -5,10 +5,10 @@ use std::{
 
 use super::{error::RuntimeError, interpreter::RuntimeResult, scanner::Token};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
+    Bool(bool),
     Nil,
-    Boolean(bool),
     Number(f64),
     String(String),
 }
@@ -57,7 +57,7 @@ impl Value {
 
     pub fn checked_gt<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
-            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs > rhs)),
+            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Bool(lhs > rhs)),
             _ => Err(RuntimeError::new(
                 operator,
                 "Operands must be numbers.".to_string(),
@@ -67,7 +67,7 @@ impl Value {
 
     pub fn checked_gte<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
-            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs >= rhs)),
+            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Bool(lhs >= rhs)),
             _ => Err(RuntimeError::new(
                 operator,
                 "Operands must be numbers.".to_string(),
@@ -77,7 +77,7 @@ impl Value {
 
     pub fn checked_lt<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
-            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs < rhs)),
+            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Bool(lhs < rhs)),
             _ => Err(RuntimeError::new(
                 operator,
                 "Operands must be numbers.".to_string(),
@@ -87,7 +87,7 @@ impl Value {
 
     pub fn checked_lte<'a>(&self, operator: &'a Token, rhs: &Value) -> RuntimeResult<'a, Value> {
         match (self, rhs) {
-            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Boolean(lhs >= rhs)),
+            (Self::Number(lhs), Self::Number(rhs)) => Ok(Self::Bool(lhs >= rhs)),
             _ => Err(RuntimeError::new(
                 operator,
                 "Operands must be numbers.".to_string(),
@@ -105,11 +105,15 @@ impl Value {
         }
     }
 
-    pub fn is_truthy(&self) -> Self {
+    pub fn not(&self) -> Value {
+        Self::Bool(!self.is_truthy())
+    }
+
+    pub fn is_truthy(&self) -> bool {
         match self {
-            Self::Nil => Self::Boolean(false),
-            Self::Boolean(_) => self.clone(),
-            _ => Self::Boolean(true),
+            Self::Nil => false,
+            Self::Bool(b) => *b,
+            _ => true,
         }
     }
 }
@@ -128,7 +132,7 @@ impl PartialEq for Value {
         match (self, other) {
             (Self::Number(lhs), Self::Number(rhs)) => lhs == rhs,
             (Self::String(lhs), Self::String(rhs)) => lhs == rhs,
-            (Self::Boolean(lhs), Self::Boolean(rhs)) => lhs == rhs,
+            (Self::Bool(lhs), Self::Bool(rhs)) => lhs == rhs,
             (Self::Nil, Self::Nil) => true,
             _ => false,
         }
@@ -149,7 +153,7 @@ impl Not for Value {
     type Output = Self;
     fn not(self) -> Self::Output {
         match self {
-            Self::Boolean(b) => Self::Boolean(!b),
+            Self::Bool(b) => Self::Bool(!b),
             _ => panic!("Invalid Not operation Value: {self}"),
         }
     }
@@ -159,7 +163,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Nil => write!(f, "nil"),
-            Value::Boolean(b) => write!(f, "{b}"),
+            Value::Bool(b) => write!(f, "{b}"),
             Value::Number(n) => {
                 if n.fract() == 0.0 {
                     write!(f, "{}", *n as isize)

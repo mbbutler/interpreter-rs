@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use super::scanner::{Literal, Token};
+use super::{scanner::Token, value::Value};
 
 #[derive(Debug)]
 pub enum Expr {
@@ -14,7 +14,12 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Grouping(Box<Expr>),
-    Literal(Literal),
+    Literal(Value),
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
     Unary {
         operator: Token,
         right: Box<Expr>,
@@ -25,15 +30,20 @@ pub enum Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Assign { name, value } => write!(f, "{} = {}", name.lexeme, value),
+            Self::Assign { name, value } => write!(f, "{} = {value}", name.lexeme),
             Self::Binary {
                 left,
                 operator,
                 right,
-            } => write!(f, "({} {} {})", operator.lexeme, left, right),
+            } => write!(f, "({} {left} {right})", operator.lexeme),
             Self::Grouping(expr) => write!(f, "(group {expr})"),
             Self::Literal(literal) => write!(f, "{literal}"),
-            Self::Unary { operator, right } => write!(f, "({} {})", operator.lexeme, right),
+            Self::Logical {
+                left,
+                operator,
+                right,
+            } => write!(f, "{left} {} {right}", operator.lexeme),
+            Self::Unary { operator, right } => write!(f, "({} {right})", operator.lexeme),
             Self::Variable(token) => write!(f, "{}", token.lexeme),
         }
     }
@@ -41,7 +51,10 @@ impl Display for Expr {
 
 #[cfg(test)]
 mod expr_tests {
-    use crate::lox::scanner::{Literal, Token, TokenType};
+    use crate::lox::{
+        scanner::{Token, TokenType},
+        value::Value,
+    };
 
     use super::Expr;
 
@@ -56,7 +69,7 @@ mod expr_tests {
                     // col: 0,
                     line: 0,
                 },
-                right: Box::new(Expr::Literal(Literal::Number(123.0))),
+                right: Box::new(Expr::Literal(Value::Number(123.0))),
             }),
             operator: Token {
                 t_type: TokenType::Star,
@@ -65,7 +78,7 @@ mod expr_tests {
                 // col: 0,
                 line: 0,
             },
-            right: Box::new(Expr::Grouping(Box::new(Expr::Literal(Literal::Number(
+            right: Box::new(Expr::Grouping(Box::new(Expr::Literal(Value::Number(
                 45.67,
             ))))),
         };
