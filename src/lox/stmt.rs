@@ -2,16 +2,26 @@ use std::fmt::Display;
 
 use super::{expr::Expr, scanner::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Block(Vec<Stmt>),
     Expression(Expr),
+    Function {
+        name: Token,
+        params: Vec<Token>,
+        body: Vec<Stmt>,
+    },
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
         else_branch: Option<Box<Stmt>>,
     },
     Print(Expr),
+    Return {
+        #[allow(unused)]
+        keyword: Token,
+        value: Option<Expr>,
+    },
     Var {
         name: Token,
         initializer: Expr,

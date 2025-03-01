@@ -42,15 +42,52 @@ impl<'a> Parser<'a> {
     }
 
     fn declaration(&mut self) -> ParserResult<Stmt> {
-        if self.match_t_types(&[TokenType::Var]) {
+        if self.match_t_types(&[TokenType::Fun]) {
+            self.function("function")
+        } else if self.match_t_types(&[TokenType::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
     }
 
+    fn function(&mut self, kind: &str) -> ParserResult<Stmt> {
+        let name = self.consume(&TokenType::Identifier, format!("Expect {kind} name."))?;
+        self.consume(
+            &TokenType::LeftParen,
+            format!("Expect '(' after {kind} name."),
+        )?;
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    return Err(ParseError::new(
+                        name,
+                        "Can't have more than 255 parameters.".to_string(),
+                    ));
+                }
+                params.push(
+                    self.consume(&TokenType::Identifier, "Expect parameter name.".to_string())?,
+                );
+                if !self.match_t_types(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(
+            &TokenType::RightParen,
+            "Expect ')' after parameters.".to_string(),
+        )?;
+        self.consume(
+            &TokenType::LeftBrace,
+            format!("Expect '{{' before {kind} body."),
+        )?;
+        let body = self.block()?;
+        Ok(Stmt::Function { name, params, body })
+    }
+
     fn var_declaration(&mut self) -> ParserResult<Stmt> {
-        let name = self.consume(&TokenType::Identifier, "Expect variable name.")?;
+        let name = self.consume(&TokenType::Identifier, "Expect variable name.".to_string())?;
         let initializer = if self.match_t_types(&[TokenType::Equal]) {
             self.expression()?
         } else {
@@ -58,7 +95,7 @@ impl<'a> Parser<'a> {
         };
         self.consume(
             &TokenType::Semicolon,
-            "Expect ';' after variable declaration.",
+            "Expect ';' after variable declaration.".to_string(),
         )?;
         Ok(Stmt::Var { name, initializer })
     }
@@ -73,13 +110,17 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.if_statement()
             }
+            TokenType::LeftBrace => {
+                self.advance();
+                Ok(Stmt::Block(self.block()?))
+            }
             TokenType::Print => {
                 self.advance();
                 self.print_statement()
             }
-            TokenType::LeftBrace => {
+            TokenType::Return => {
                 self.advance();
-                Ok(Stmt::Block(self.block()?))
+                self.return_statement()
             }
             TokenType::While => {
                 self.advance();
@@ -90,7 +131,7 @@ impl<'a> Parser<'a> {
     }
 
     fn for_statement(&mut self) -> ParserResult<Stmt> {
-        self.consume(&TokenType::LeftParen, "Expect '(' after 'for'.")?;
+        self.consume(&TokenType::LeftParen, "Expect '(' after 'for'.".to_string())?;
 
         let initializer = if self.match_t_types(&[TokenType::Semicolon]) {
             None
@@ -105,14 +146,20 @@ impl<'a> Parser<'a> {
         } else {
             Some(self.expression()?)
         };
-        self.consume(&TokenType::Semicolon, "Expect ';' after loop condition.")?;
+        self.consume(
+            &TokenType::Semicolon,
+            "Expect ';' after loop condition.".to_string(),
+        )?;
 
         let increment = if self.check(&TokenType::RightParen) {
             None
         } else {
             Some(self.expression()?)
         };
-        self.consume(&TokenType::RightParen, "Expect ')' after for clauses.")?;
+        self.consume(
+            &TokenType::RightParen,
+            "Expect ')' after for clauses.".to_string(),
+        )?;
 
         let mut body = self.statement()?;
         if let Some(increment) = increment {
@@ -133,18 +180,41 @@ impl<'a> Parser<'a> {
         Ok(body)
     }
 
+    fn return_statement(&mut self) -> ParserResult<Stmt> {
+        let keyword = self.previous().to_owned();
+        let value = if !self.check(&TokenType::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(
+            &TokenType::Semicolon,
+            "Expect ';' after return value.".to_string(),
+        )?;
+        Ok(Stmt::Return { keyword, value })
+    }
+
     fn while_statement(&mut self) -> ParserResult<Stmt> {
-        self.consume(&TokenType::LeftParen, "Expect '(' after 'while'.")?;
+        self.consume(
+            &TokenType::LeftParen,
+            "Expect '(' after 'while'.".to_string(),
+        )?;
         let condition = self.expression()?;
-        self.consume(&TokenType::RightParen, "Expect ')' after condition.")?;
+        self.consume(
+            &TokenType::RightParen,
+            "Expect ')' after condition.".to_string(),
+        )?;
         let body = Box::new(self.statement()?);
         Ok(Stmt::While { condition, body })
     }
 
     fn if_statement(&mut self) -> ParserResult<Stmt> {
-        self.consume(&TokenType::LeftParen, "Expect '(' after 'if'.")?;
+        self.consume(&TokenType::LeftParen, "Expect '(' after 'if'.".to_string())?;
         let condition = self.expression()?;
-        self.consume(&TokenType::RightParen, "Expect ')' after if condition.")?;
+        self.consume(
+            &TokenType::RightParen,
+            "Expect ')' after if condition.".to_string(),
+        )?;
         let then_branch = Box::new(self.statement()?);
         let else_branch = if self.match_t_types(&[TokenType::Else]) {
             Some(Box::new(self.statement()?))
@@ -163,19 +233,22 @@ impl<'a> Parser<'a> {
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
-        self.consume(&TokenType::RightBrace, "Expect '}' after block.")?;
+        self.consume(
+            &TokenType::RightBrace,
+            "Expect '}' after block.".to_string(),
+        )?;
         Ok(statements)
     }
 
     fn print_statement(&mut self) -> ParserResult<Stmt> {
         let expr = self.expression()?;
-        self.consume(&TokenType::Semicolon, "Expect ';' after value.")?;
+        self.consume(&TokenType::Semicolon, "Expect ';' after value.".to_string())?;
         Ok(Stmt::Print(expr))
     }
 
     fn expression_statement(&mut self) -> ParserResult<Stmt> {
         let expr = self.expression()?;
-        self.consume(&TokenType::Semicolon, "Expect ';' after value.")?;
+        self.consume(&TokenType::Semicolon, "Expect ';' after value.".to_string())?;
         Ok(Stmt::Expression(expr))
     }
 
@@ -302,8 +375,47 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             })
         } else {
-            self.primary()
+            self.call()
         }
+    }
+
+    fn call(&mut self) -> ParserResult<Expr> {
+        let mut expr = self.primary()?;
+        loop {
+            if self.match_t_types(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> ParserResult<Expr> {
+        let mut arguments = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    return Err(ParseError::new(
+                        self.peek().to_owned(),
+                        "Cannot have more than 255 arguments.".to_string(),
+                    ));
+                }
+                arguments.push(self.expression()?);
+                if !self.match_t_types(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        let paren = self.consume(
+            &TokenType::RightParen,
+            "Expect ')' after arguments.".to_string(),
+        )?;
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        })
     }
 
     fn primary(&mut self) -> ParserResult<Expr> {
@@ -318,7 +430,10 @@ impl<'a> Parser<'a> {
             TokenType::Identifier => Ok(Expr::Variable(self.previous().to_owned())),
             TokenType::LeftParen => {
                 let expr = self.expression()?;
-                self.consume(&TokenType::RightParen, "Expect ')' after expression.")?;
+                self.consume(
+                    &TokenType::RightParen,
+                    "Expect ')' after expression.".to_string(),
+                )?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
             _ => Err(ParseError::new(
@@ -346,11 +461,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume(&mut self, t_type: &TokenType, msg: &str) -> ParserResult<Token> {
+    fn consume(&mut self, t_type: &TokenType, msg: String) -> ParserResult<Token> {
         if self.check(t_type) {
             Ok(self.advance().to_owned())
         } else {
-            Err(ParseError::new(self.peek().to_owned(), msg.to_string()))
+            Err(ParseError::new(self.peek().to_owned(), msg))
         }
     }
 

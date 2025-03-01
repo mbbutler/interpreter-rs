@@ -1,27 +1,72 @@
+use std::{
+    sync::{Arc, RwLock},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use super::{
-    environment::Environment, error::RuntimeError, expr::Expr, scanner::TokenType, stmt::Stmt,
+    environment::Environment,
+    error::RuntimeException,
+    expr::Expr,
+    lox_callable::{LoxCallable, LoxCallableFn},
+    scanner::TokenType,
+    stmt::Stmt,
     value::Value,
 };
 
-pub type RuntimeResult<'a, T> = Result<T, RuntimeError<'a>>;
+pub type RuntimeResult<T> = Result<T, RuntimeException>;
 
 #[derive(Default)]
 pub struct Interpreter {
-    environment: Box<Environment>,
+    #[allow(unused)]
+    pub globals: Arc<RwLock<Environment>>,
+    pub environment: Arc<RwLock<Environment>>,
 }
 
 impl Interpreter {
-    pub fn interpret<'a>(&mut self, stmts: &'a [Stmt]) -> RuntimeResult<'a, ()> {
+    pub fn new() -> Self {
+        let globals = Arc::new(RwLock::new(Environment::default()));
+        globals.write().unwrap().define(
+            "clock",
+            Value::Callable(LoxCallable::new_native(0, |_, _| {
+                Ok(Value::Number(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as f64,
+                ))
+            })),
+        );
+        let environment = Arc::clone(&globals);
+        Self {
+            globals,
+            environment,
+        }
+    }
+
+    pub fn interpret(&mut self, stmts: &[Stmt]) -> RuntimeResult<()> {
         for stmt in stmts {
             self.execute(stmt)?;
         }
         Ok(())
     }
 
-    fn execute<'a>(&mut self, stmt: &'a Stmt) -> RuntimeResult<'a, ()> {
+    fn execute(&mut self, stmt: &Stmt) -> RuntimeResult<()> {
         match stmt {
             Stmt::Block(statements) => {
-                self.execute_block(statements)?;
+                let new_environment = Environment::new(&self.environment);
+                self.execute_block(statements, new_environment)?;
+            }
+            Stmt::Expression(expr) => {
+                self.evaluate(expr)?;
+            }
+            Stmt::Function { name, params, body } => {
+                let function = Value::Callable(LoxCallable::new_lox(
+                    Box::new(name.to_owned()),
+                    params.clone(),
+                    body.clone(),
+                    &self.environment,
+                ));
+                self.environment.write()?.define(&name.lexeme, function);
             }
             Stmt::If {
                 condition,
@@ -38,12 +83,16 @@ impl Interpreter {
                 let value = self.evaluate(expr)?;
                 println!("{value}");
             }
-            Stmt::Expression(expr) => {
-                self.evaluate(expr)?;
+            Stmt::Return { keyword: _, value } => {
+                let value = match value {
+                    Some(expr) => self.evaluate(expr)?,
+                    None => Value::Nil,
+                };
+                return Err(RuntimeException::new_return(value));
             }
             Stmt::Var { name, initializer } => {
                 let value = self.evaluate(initializer)?;
-                self.environment.define(&name.lexeme, value);
+                self.environment.write()?.define(&name.lexeme, value);
             }
             Stmt::While { condition, body } => {
                 while self.evaluate(condition)?.is_truthy() {
@@ -54,23 +103,27 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_block<'a>(&mut self, statements: &'a [Stmt]) -> RuntimeResult<'a, ()> {
-        let new_environment = Box::new(Environment::default());
-        let previous = std::mem::replace(&mut self.environment, new_environment);
-        self.environment.enclosing = Some(previous);
+    pub fn execute_block(
+        &mut self,
+        statements: &[Stmt],
+        environment: Arc<RwLock<Environment>>,
+    ) -> RuntimeResult<()> {
+        let previous = Arc::clone(&self.environment);
+        self.environment = environment;
         for stmt in statements {
-            self.execute(stmt)
-                .inspect_err(|_| self.environment = self.environment.enclosing.take().unwrap())?;
+            self.execute(stmt).inspect_err(|_| {
+                self.environment = Arc::clone(&previous);
+            })?;
         }
-        self.environment = self.environment.enclosing.take().unwrap();
+        self.environment = previous;
         Ok(())
     }
 
-    fn evaluate<'a>(&mut self, expr: &'a Expr) -> RuntimeResult<'a, Value> {
+    fn evaluate(&mut self, expr: &Expr) -> RuntimeResult<Value> {
         match expr {
             Expr::Assign { name, value } => {
                 let value = self.evaluate(value)?;
-                self.environment.assign(name, value.clone())?;
+                self.environment.write()?.assign(name, value.clone())?;
                 Ok(value)
             }
             Expr::Binary {
@@ -92,6 +145,37 @@ impl Interpreter {
                     TokenType::BangEqual => Ok(Value::Bool(left != right)),
                     TokenType::EqualEqual => Ok(Value::Bool(left == right)),
                     _ => unreachable!("Invalid Binary expression: {expr}"),
+                }
+            }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => {
+                let callee = self.evaluate(callee)?;
+                let mut args = Vec::new();
+                for argument in arguments {
+                    args.push(self.evaluate(argument)?);
+                }
+
+                if let Value::Callable(callee) = callee {
+                    if args.len() != callee.arity() {
+                        Err(RuntimeException::new_error(
+                            paren.to_owned(),
+                            format!(
+                                "Expected {} arguments but got {}.",
+                                callee.arity(),
+                                args.len()
+                            ),
+                        ))
+                    } else {
+                        callee.call(self, &args)
+                    }
+                } else {
+                    Err(RuntimeException::new_error(
+                        paren.to_owned(),
+                        "Can only call functions and classes.".to_string(),
+                    ))
                 }
             }
             Expr::Grouping(expr) => self.evaluate(expr),
@@ -119,7 +203,7 @@ impl Interpreter {
                     _ => unreachable!("Invalid Unary expression: {expr}"),
                 }
             }
-            Expr::Variable(token) => self.environment.get(token),
+            Expr::Variable(token) => self.environment.read()?.get(token),
         }
     }
 }

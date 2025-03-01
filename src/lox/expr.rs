@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use super::{scanner::Token, value::Value};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Assign {
         name: Token,
@@ -12,6 +12,11 @@ pub enum Expr {
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
     },
     Grouping(Box<Expr>),
     Literal(Value),
@@ -36,6 +41,19 @@ impl Display for Expr {
                 operator,
                 right,
             } => write!(f, "({} {left} {right})", operator.lexeme),
+            Self::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => write!(
+                f,
+                "{callee}({})",
+                arguments
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Self::Grouping(expr) => write!(f, "(group {expr})"),
             Self::Literal(literal) => write!(f, "{literal}"),
             Self::Logical {

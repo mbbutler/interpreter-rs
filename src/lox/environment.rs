@@ -1,19 +1,29 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
-use super::{error::RuntimeError, interpreter::RuntimeResult, scanner::Token, value::Value};
+use super::{error::RuntimeException, interpreter::RuntimeResult, scanner::Token, value::Value};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
-    pub enclosing: Option<Box<Environment>>,
+    enclosing: Option<Arc<RwLock<Environment>>>,
 }
 
 impl Environment {
+    pub fn new(enclosing: &Arc<RwLock<Environment>>) -> Arc<RwLock<Self>> {
+        Arc::new(RwLock::new(Self {
+            values: HashMap::new(),
+            enclosing: Some(Arc::clone(enclosing)),
+        }))
+    }
+
     pub fn define(&mut self, name: &str, value: Value) {
         self.values.insert(name.to_string(), value);
     }
 
-    pub fn assign<'a>(&mut self, name: &'a Token, value: Value) -> RuntimeResult<'a, ()> {
+    pub fn assign(&mut self, name: &Token, value: Value) -> RuntimeResult<()> {
         match self.values.get_mut(&name.lexeme) {
             Some(val) => {
                 *val = value;
@@ -21,10 +31,10 @@ impl Environment {
             }
             None => {
                 if let Some(enclosing) = self.enclosing.as_mut() {
-                    enclosing.assign(name, value)
+                    enclosing.write()?.assign(name, value)
                 } else {
-                    Err(RuntimeError::new(
-                        name,
+                    Err(RuntimeException::new_error(
+                        name.to_owned(),
                         format!("Undefined variable '{}'.", name.lexeme),
                     ))
                 }
@@ -32,15 +42,15 @@ impl Environment {
         }
     }
 
-    pub fn get<'a>(&self, token: &'a Token) -> RuntimeResult<'a, Value> {
+    pub fn get(&self, token: &Token) -> RuntimeResult<Value> {
         match self.values.get(&token.lexeme) {
             Some(value) => Ok(value.to_owned()),
             None => {
                 if let Some(enclosing) = &self.enclosing {
-                    enclosing.get(token)
+                    enclosing.read()?.get(token)
                 } else {
-                    Err(RuntimeError::new(
-                        token,
+                    Err(RuntimeException::new_error(
+                        token.to_owned(),
                         format!("Undefined variable '{}'.", token.lexeme),
                     ))
                 }

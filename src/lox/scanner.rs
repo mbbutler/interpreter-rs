@@ -25,7 +25,7 @@ static KEYWORDS: LazyLock<HashMap<&str, TokenType>> = LazyLock::new(|| {
     keywords
 });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -73,10 +73,11 @@ pub enum TokenType {
     Var,
     While,
 
+    #[default]
     Eof,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Token {
     pub t_type: TokenType,
     pub lexeme: String,

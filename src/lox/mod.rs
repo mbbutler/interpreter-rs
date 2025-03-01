@@ -2,6 +2,7 @@ pub mod environment;
 pub mod error;
 pub mod expr;
 pub mod interpreter;
+pub mod lox_callable;
 pub mod parser;
 pub mod scanner;
 pub mod stmt;
@@ -18,8 +19,7 @@ use interpreter::Interpreter;
 use parser::Parser;
 use scanner::Scanner;
 
-static INTERPRETER: LazyLock<Mutex<Interpreter>> =
-    LazyLock::new(|| Mutex::new(Interpreter::default()));
+static INTERPRETER: LazyLock<Mutex<Interpreter>> = LazyLock::new(|| Mutex::new(Interpreter::new()));
 
 pub struct Lox;
 
