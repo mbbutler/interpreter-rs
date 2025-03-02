@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::{
     error::ParseError,
     expr::Expr,
@@ -5,6 +7,8 @@ use super::{
     stmt::Stmt,
     value::Value,
 };
+
+static NEXT_EXPR_ID: AtomicUsize = AtomicUsize::new(0);
 
 type ParserResult<T> = std::result::Result<T, ParseError>;
 
@@ -89,9 +93,9 @@ impl<'a> Parser<'a> {
     fn var_declaration(&mut self) -> ParserResult<Stmt> {
         let name = self.consume(&TokenType::Identifier, "Expect variable name.".to_string())?;
         let initializer = if self.match_t_types(&[TokenType::Equal]) {
-            self.expression()?
+            Some(self.expression()?)
         } else {
-            Expr::Literal(Value::Nil)
+            None
         };
         self.consume(
             &TokenType::Semicolon,
@@ -261,8 +265,9 @@ impl<'a> Parser<'a> {
         if self.match_t_types(&[TokenType::Equal]) {
             let equals = self.previous().to_owned();
             let value = self.assgnment()?;
-            if let Expr::Variable(name) = expr {
+            if let Expr::Variable { id, name } = expr {
                 Ok(Expr::Assign {
+                    id,
                     name,
                     value: Box::new(value),
                 })
@@ -427,7 +432,10 @@ impl<'a> Parser<'a> {
             TokenType::Number | TokenType::String => Ok(Expr::Literal(
                 self.previous().literal.as_ref().unwrap().to_owned(),
             )),
-            TokenType::Identifier => Ok(Expr::Variable(self.previous().to_owned())),
+            TokenType::Identifier => Ok(Expr::Variable {
+                id: NEXT_EXPR_ID.fetch_add(1, Ordering::Relaxed),
+                name: self.previous().to_owned(),
+            }),
             TokenType::LeftParen => {
                 let expr = self.expression()?;
                 self.consume(

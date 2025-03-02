@@ -57,4 +57,35 @@ impl Environment {
             }
         }
     }
+
+    pub fn get_at(&self, distance: usize, token: &Token) -> RuntimeResult<Value> {
+        if distance == 0 {
+            match self.values.get(&token.lexeme) {
+                Some(value) => Ok(value.to_owned()),
+                None => Err(RuntimeException::new_error(
+                    token.to_owned(),
+                    format!("Undefined variable '{}'.", token.lexeme),
+                )),
+            }
+        } else {
+            self.enclosing
+                .as_ref()
+                .expect("Attempted to access None enclosing Environment.")
+                .read()?
+                .get_at(distance - 1, token)
+        }
+    }
+
+    pub fn assign_at(&mut self, distance: usize, token: &Token, value: Value) -> RuntimeResult<()> {
+        if distance == 0 {
+            self.values.insert(token.lexeme.to_owned(), value);
+            Ok(())
+        } else {
+            self.enclosing
+                .as_ref()
+                .expect("Attempted to access None enclosing Environment.")
+                .write()?
+                .assign_at(distance - 1, token, value)
+        }
+    }
 }

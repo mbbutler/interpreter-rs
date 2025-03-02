@@ -5,6 +5,7 @@ use super::{scanner::Token, value::Value};
 #[derive(Debug, Clone)]
 pub enum Expr {
     Assign {
+        id: usize,
         name: Token,
         value: Box<Expr>,
     },
@@ -29,13 +30,16 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
-    Variable(Token),
+    Variable {
+        id: usize,
+        name: Token,
+    },
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Assign { name, value } => write!(f, "{} = {value}", name.lexeme),
+            Self::Assign { id: _, name, value } => write!(f, "{} = {value}", name.lexeme),
             Self::Binary {
                 left,
                 operator,
@@ -62,7 +66,7 @@ impl Display for Expr {
                 right,
             } => write!(f, "{left} {} {right}", operator.lexeme),
             Self::Unary { operator, right } => write!(f, "({} {right})", operator.lexeme),
-            Self::Variable(token) => write!(f, "{}", token.lexeme),
+            Self::Variable { id: _, name } => write!(f, "{}", name.lexeme),
         }
     }
 }

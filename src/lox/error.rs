@@ -9,43 +9,78 @@ use super::{
     value::Value,
 };
 
-// pub type LoxResult<'a, T> = std::result::Result<T, LoxError<'a>>;
+pub enum LoxError {
+    Scanner(Vec<ScanError>),
+    Parser(Vec<ParseError>),
+    Resolver(ResolverError),
+    Runtime(RuntimeException),
+}
 
-// pub enum LoxError<'a> {
-//     Scanner(ScanError<'a>),
-//     Parser(ParseError),
-//     Runtime(RuntimeError<'a>),
-// }
+impl Display for LoxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Scanner(errs) => {
+                for err in errs {
+                    writeln!(f, "{}", err)?;
+                }
+                Ok(())
+            }
+            Self::Parser(errs) => {
+                for err in errs {
+                    writeln!(f, "{}", err)?;
+                }
+                Ok(())
+            }
+            Self::Resolver(err) => write!(f, "{}", err),
+            Self::Runtime(err) => write!(f, "{}", err),
+        }
+    }
+}
 
-// impl<'a> Display for LoxError<'a> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Self::Scanner(err) => write!(f, "{}", err),
-//             Self::Parser(err) => write!(f, "{}", err),
-//             Self::Runtime(err) => write!(f, "{}", err),
-//         }
-//     }
-// }
+impl From<Vec<ScanError>> for LoxError {
+    fn from(value: Vec<ScanError>) -> Self {
+        Self::Scanner(value)
+    }
+}
 
-pub struct ScanError<'a> {
+impl From<Vec<ParseError>> for LoxError {
+    fn from(value: Vec<ParseError>) -> Self {
+        Self::Parser(value)
+    }
+}
+
+impl From<ResolverError> for LoxError {
+    fn from(value: ResolverError) -> Self {
+        Self::Resolver(value)
+    }
+}
+
+impl From<RuntimeException> for LoxError {
+    fn from(value: RuntimeException) -> Self {
+        Self::Runtime(value)
+    }
+}
+
+#[derive(Clone)]
+pub struct ScanError {
     msg: String,
-    code: &'a str,
+    code: String,
     col: usize,
     line: usize,
 }
 
-impl<'a> ScanError<'a> {
-    pub fn new(msg: String, code: &'a str, col: usize, line: usize) -> Self {
+impl ScanError {
+    pub fn new(msg: String, code: &str, col: usize, line: usize) -> Self {
         ScanError {
             msg,
-            code,
+            code: code.to_string(),
             col,
             line,
         }
     }
 }
 
-impl<'a> Display for ScanError<'a> {
+impl Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Error: {}", &self.msg)?;
         writeln!(f, "    {} | {}", self.line, self.code)?;
@@ -137,5 +172,29 @@ impl From<PoisonError<RwLockReadGuard<'_, Environment>>> for RuntimeException {
             token: Token::default(),
             msg: format!("RwLock is poisoned for reading: {value}"),
         })
+    }
+}
+
+pub struct ResolverError {
+    token: Token,
+    msg: String,
+}
+
+impl ResolverError {
+    pub fn new(token: Token, msg: String) -> Self {
+        Self { token, msg }
+    }
+}
+
+impl Display for ResolverError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.token.t_type {
+            TokenType::Eof => write!(f, "[line {}] Error at end: {}", self.token.line, self.msg),
+            _ => write!(
+                f,
+                "[line {}] Error at '{}': {}",
+                self.token.line, self.token.lexeme, self.msg
+            ),
+        }
     }
 }

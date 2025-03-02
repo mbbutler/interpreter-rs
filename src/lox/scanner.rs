@@ -87,7 +87,7 @@ pub struct Token {
 }
 
 pub struct Scanner<'a> {
-    had_error: bool,
+    errors: Vec<ScanError>,
     source: &'a str,
     chars: PeekNth<Chars<'a>>,
     tokens: Vec<Token>,
@@ -101,7 +101,7 @@ pub struct Scanner<'a> {
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            had_error: false,
+            errors: Vec::new(),
             source,
             chars: peek_nth(source.chars()),
             tokens: Vec::new(),
@@ -113,7 +113,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, ()> {
+    pub fn scan_tokens(&'a mut self) -> Result<&[Token], Vec<ScanError>> {
         while self.chars.peek().is_some() {
             self.start = self.current;
             self.scan_token();
@@ -121,10 +121,10 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::Eof, None);
 
-        if !self.had_error {
+        if self.errors.is_empty() {
             Ok(&self.tokens)
         } else {
-            Err(())
+            Err(self.errors.to_vec())
         }
     }
 
@@ -137,11 +137,8 @@ impl<'a> Scanner<'a> {
     }
 
     fn record_error(&mut self, msg: String) {
-        self.had_error = true;
-        eprintln!(
-            "{}",
-            ScanError::new(msg, self.lexeme(), self.col, self.line,)
-        )
+        let error = ScanError::new(msg, self.lexeme(), self.col, self.line);
+        self.errors.push(error);
     }
 
     fn add_token(&mut self, t_type: TokenType, literal: Option<Value>) {

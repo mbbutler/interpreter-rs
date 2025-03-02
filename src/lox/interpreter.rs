@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -8,7 +9,8 @@ use super::{
     error::RuntimeException,
     expr::Expr,
     lox_callable::{LoxCallable, LoxCallableFn},
-    scanner::TokenType,
+    resolver::ResolverResult,
+    scanner::{Token, TokenType},
     stmt::Stmt,
     value::Value,
 };
@@ -20,6 +22,7 @@ pub struct Interpreter {
     #[allow(unused)]
     pub globals: Arc<RwLock<Environment>>,
     pub environment: Arc<RwLock<Environment>>,
+    pub locals: HashMap<usize, usize>,
 }
 
 impl Interpreter {
@@ -40,6 +43,7 @@ impl Interpreter {
         Self {
             globals,
             environment,
+            locals: HashMap::new(),
         }
     }
 
@@ -91,7 +95,11 @@ impl Interpreter {
                 return Err(RuntimeException::new_return(value));
             }
             Stmt::Var { name, initializer } => {
-                let value = self.evaluate(initializer)?;
+                let value = if let Some(initializer) = initializer {
+                    self.evaluate(initializer)?
+                } else {
+                    Value::Nil
+                };
                 self.environment.write()?.define(&name.lexeme, value);
             }
             Stmt::While { condition, body } => {
@@ -119,11 +127,27 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn resolve(&mut self, id: &usize, depth: usize) -> ResolverResult {
+        self.locals.insert(*id, depth);
+        Ok(())
+    }
+
     fn evaluate(&mut self, expr: &Expr) -> RuntimeResult<Value> {
         match expr {
-            Expr::Assign { name, value } => {
-                let value = self.evaluate(value)?;
-                self.environment.write()?.assign(name, value.clone())?;
+            Expr::Assign {
+                id,
+                name,
+                value: value_expr,
+            } => {
+                let value = self.evaluate(value_expr)?;
+                match self.locals.get(id) {
+                    Some(distance) => {
+                        self.environment
+                            .write()?
+                            .assign_at(*distance, name, value.clone())?
+                    }
+                    None => self.globals.write()?.assign(name, value.clone())?,
+                }
                 Ok(value)
             }
             Expr::Binary {
@@ -203,7 +227,14 @@ impl Interpreter {
                     _ => unreachable!("Invalid Unary expression: {expr}"),
                 }
             }
-            Expr::Variable(token) => self.environment.read()?.get(token),
+            Expr::Variable { id, name } => self.look_up_var(name, id),
+        }
+    }
+
+    fn look_up_var(&self, name: &Token, id: &usize) -> RuntimeResult<Value> {
+        match self.locals.get(id) {
+            Some(distance) => self.environment.read()?.get_at(*distance, name),
+            None => self.globals.read()?.get(name),
         }
     }
 }
