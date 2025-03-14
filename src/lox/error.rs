@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::fmt::Display;
 
 use super::{
     scanner::{Token, TokenType},
@@ -153,24 +150,6 @@ impl Display for RuntimeError {
             "[line {}] Error at '{}': {}",
             self.token.line, self.token.lexeme, &self.msg
         )
-    }
-}
-
-impl<T> From<PoisonError<RwLockWriteGuard<'_, T>>> for RuntimeException {
-    fn from(value: PoisonError<RwLockWriteGuard<'_, T>>) -> Self {
-        Self::Error(RuntimeError {
-            token: Token::default(),
-            msg: format!("RwLock is poisoned for writing: {value}"),
-        })
-    }
-}
-
-impl<T> From<PoisonError<RwLockReadGuard<'_, T>>> for RuntimeException {
-    fn from(value: PoisonError<RwLockReadGuard<'_, T>>) -> Self {
-        Self::Error(RuntimeError {
-            token: Token::default(),
-            msg: format!("RwLock is poisoned for reading: {value}"),
-        })
     }
 }
 

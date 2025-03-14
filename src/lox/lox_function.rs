@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc, sync::RwLock};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use super::{
     environment::Environment,
@@ -13,14 +13,14 @@ use super::{
 #[derive(Clone, Debug)]
 pub struct LoxFunction {
     declaration: Box<Function>,
-    closure: Rc<RwLock<Environment>>,
+    closure: Rc<RefCell<Environment>>,
     is_initializer: bool,
 }
 
 impl LoxFunction {
     pub fn new(
         declaration: &Function,
-        closure: &Rc<RwLock<Environment>>,
+        closure: &Rc<RefCell<Environment>>,
         is_initializer: bool,
     ) -> Self {
         Self {
@@ -33,7 +33,7 @@ impl LoxFunction {
     pub fn bind(&self, instance: &LoxInstance) -> RuntimeResult<LoxFunction> {
         let environment = Environment::new(&self.closure);
         environment
-            .write()?
+            .borrow_mut()
             .define("this", Value::Instance(instance.clone()));
         Ok(LoxFunction::new(
             &self.declaration,
@@ -46,7 +46,7 @@ impl LoxFunction {
 impl LoxCallable for LoxFunction {
     fn call(&self, interpreter: &mut Interpreter, arguments: &[Value]) -> RuntimeResult<Value> {
         let environment = Environment::new(&self.closure);
-        let mut env_write = environment.write()?;
+        let mut env_write = environment.borrow_mut();
         for (param, arg) in self.declaration.params.iter().zip(arguments) {
             env_write.define(&param.lexeme, arg.to_owned());
         }
@@ -55,14 +55,14 @@ impl LoxCallable for LoxFunction {
         match interpreter.execute_block(&self.declaration.body, environment) {
             Ok(_) => {
                 if self.is_initializer {
-                    self.closure.read()?.get_at(0, "this")
+                    self.closure.borrow().get_at(0, "this")
                 } else {
                     Ok(Value::Nil)
                 }
             }
             Err(RuntimeException::Return(val)) => {
                 if self.is_initializer {
-                    self.closure.read()?.get_at(0, "this")
+                    self.closure.borrow().get_at(0, "this")
                 } else {
                     Ok(val)
                 }

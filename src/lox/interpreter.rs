@@ -1,7 +1,7 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    sync::RwLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -23,15 +23,15 @@ pub type RuntimeResult<T> = Result<T, RuntimeException>;
 #[derive(Default)]
 pub struct Interpreter {
     #[allow(unused)]
-    pub globals: Rc<RwLock<Environment>>,
-    pub environment: Rc<RwLock<Environment>>,
+    pub globals: Rc<RefCell<Environment>>,
+    pub environment: Rc<RefCell<Environment>>,
     pub locals: HashMap<usize, usize>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        let globals = Rc::new(RwLock::new(Environment::default()));
-        globals.write().unwrap().define(
+        let globals = Rc::new(RefCell::new(Environment::default()));
+        globals.borrow_mut().define(
             "clock",
             Value::Callable(CallableFn::new_native(0, |_, _| {
                 Ok(Value::Number(
@@ -64,7 +64,7 @@ impl Interpreter {
                 self.execute_block(statements, new_environment)?;
             }
             Stmt::Class { name, methods } => {
-                let mut env = self.environment.write()?;
+                let mut env = self.environment.borrow_mut();
                 env.define(&name.lexeme, Value::Nil);
                 let mut methods_map = HashMap::new();
                 for method in methods {
@@ -81,7 +81,9 @@ impl Interpreter {
             }
             Stmt::Function(f) => {
                 let function = Value::Callable(CallableFn::new_lox(f, &self.environment, false));
-                self.environment.write()?.define(&f.name.lexeme, function);
+                self.environment
+                    .borrow_mut()
+                    .define(&f.name.lexeme, function);
             }
             Stmt::If {
                 condition,
@@ -111,7 +113,7 @@ impl Interpreter {
                 } else {
                     Value::Nil
                 };
-                self.environment.write()?.define(&name.lexeme, value);
+                self.environment.borrow_mut().define(&name.lexeme, value);
             }
             Stmt::While { condition, body } => {
                 while self.evaluate(condition)?.is_truthy() {
@@ -125,7 +127,7 @@ impl Interpreter {
     pub fn execute_block(
         &mut self,
         statements: &[Stmt],
-        environment: Rc<RwLock<Environment>>,
+        environment: Rc<RefCell<Environment>>,
     ) -> RuntimeResult<()> {
         let previous = Rc::clone(&self.environment);
         self.environment = environment;
@@ -154,10 +156,10 @@ impl Interpreter {
                 match self.locals.get(id) {
                     Some(distance) => {
                         self.environment
-                            .write()?
+                            .borrow_mut()
                             .assign_at(*distance, name, value.clone())?
                     }
-                    None => self.globals.write()?.assign(name, value.clone())?,
+                    None => self.globals.borrow_mut().assign(name, value.clone())?,
                 }
                 Ok(value)
             }
@@ -282,8 +284,8 @@ impl Interpreter {
 
     fn look_up_var(&self, name: &Token, id: &usize) -> RuntimeResult<Value> {
         match self.locals.get(id) {
-            Some(distance) => self.environment.read()?.get_at(*distance, &name.lexeme),
-            None => self.globals.read()?.get(name),
+            Some(distance) => self.environment.borrow().get_at(*distance, &name.lexeme),
+            None => self.globals.borrow().get(name),
         }
     }
 }

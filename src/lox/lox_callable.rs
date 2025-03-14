@@ -1,8 +1,8 @@
 // use std::fmt::Display;
 use std::{
+    cell::RefCell,
     fmt::{Debug, Display},
     rc::Rc,
-    sync::RwLock,
 };
 
 use super::{
@@ -33,7 +33,7 @@ impl CallableFn {
 
     pub fn new_lox(
         declaration: &Function,
-        closure: &Rc<RwLock<Environment>>,
+        closure: &Rc<RefCell<Environment>>,
         is_initializer: bool,
     ) -> Self {
         Self::Lox(LoxFunction::new(declaration, closure, is_initializer))

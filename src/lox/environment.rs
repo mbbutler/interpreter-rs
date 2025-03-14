@@ -1,16 +1,16 @@
-use std::{collections::HashMap, rc::Rc, sync::RwLock};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{error::RuntimeException, interpreter::RuntimeResult, scanner::Token, value::Value};
 
 #[derive(Default, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
-    enclosing: Option<Rc<RwLock<Environment>>>,
+    enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
-    pub fn new(enclosing: &Rc<RwLock<Environment>>) -> Rc<RwLock<Self>> {
-        Rc::new(RwLock::new(Self {
+    pub fn new(enclosing: &Rc<RefCell<Environment>>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             values: HashMap::new(),
             enclosing: Some(Rc::clone(enclosing)),
         }))
@@ -27,8 +27,8 @@ impl Environment {
                 Ok(())
             }
             None => {
-                if let Some(enclosing) = self.enclosing.as_mut() {
-                    enclosing.write()?.assign(name, value)
+                if let Some(enclosing) = self.enclosing.as_ref() {
+                    enclosing.borrow_mut().assign(name, value)
                 } else {
                     Err(RuntimeException::new_error(
                         name.to_owned(),
@@ -44,7 +44,7 @@ impl Environment {
             Some(value) => Ok(value.to_owned()),
             None => {
                 if let Some(enclosing) = &self.enclosing {
-                    enclosing.read()?.get(token)
+                    enclosing.borrow().get(token)
                 } else {
                     Err(RuntimeException::new_error(
                         token.to_owned(),
@@ -66,7 +66,7 @@ impl Environment {
             self.enclosing
                 .as_ref()
                 .expect("Attempted to access None enclosing Environment.")
-                .read()?
+                .borrow()
                 .get_at(distance - 1, name)
         }
     }
@@ -79,7 +79,7 @@ impl Environment {
             self.enclosing
                 .as_ref()
                 .expect("Attempted to access None enclosing Environment.")
-                .write()?
+                .borrow_mut()
                 .assign_at(distance - 1, token, value)
         }
     }
