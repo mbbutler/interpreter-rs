@@ -3,6 +3,9 @@ pub mod error;
 pub mod expr;
 pub mod interpreter;
 pub mod lox_callable;
+pub mod lox_class;
+pub mod lox_function;
+pub mod lox_instance;
 pub mod parser;
 pub mod resolver;
 pub mod scanner;
@@ -13,7 +16,6 @@ use std::{
     fs,
     io::{self, BufRead, Write},
     path::Path,
-    sync::{LazyLock, Mutex},
 };
 
 use error::LoxError;
@@ -22,21 +24,18 @@ use parser::Parser;
 use resolver::Resolver;
 use scanner::Scanner;
 
-static INTERPRETER: LazyLock<Mutex<Interpreter>> = LazyLock::new(|| Mutex::new(Interpreter::new()));
-
 type LoxResult = Result<(), LoxError>;
 
 pub struct Lox;
 
 impl Lox {
-    pub fn run(source: &str) -> LoxResult {
+    pub fn run(source: &str, interpreter: &mut Interpreter) -> LoxResult {
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens()?;
         let mut parser = Parser::new(tokens);
         let stmts = parser.parse()?;
-        let mut resolver = Resolver::default();
+        let mut resolver = Resolver::new(interpreter);
         resolver.resolve_stmts(&stmts)?;
-        let mut interpreter = INTERPRETER.lock().expect("Unable to lock INTERPRETER");
         interpreter.interpret(&stmts)?;
         Ok(())
     }
@@ -46,12 +45,14 @@ impl Lox {
         T: AsRef<Path>,
     {
         let source = fs::read_to_string(file_path).expect("Should have been able to read the file");
-        if let Err(err) = Self::run(&source) {
+        let mut interpreter = Interpreter::new();
+        if let Err(err) = Self::run(&source, &mut interpreter) {
             eprintln!("{err}");
         }
     }
 
     pub fn run_prompt() {
+        let mut interpreter = Interpreter::new();
         let stdin = io::stdin();
         println!("=== Welcome to the Lox REPL ===");
         loop {
@@ -59,7 +60,7 @@ impl Lox {
             let _ = io::stdout().flush();
             if let Some(Ok(input)) = stdin.lock().lines().next() {
                 if !input.is_empty() {
-                    if let Err(err) = Self::run(&input) {
+                    if let Err(err) = Self::run(&input, &mut interpreter) {
                         eprintln!("{err}");
                     }
                 }
@@ -72,6 +73,8 @@ impl Lox {
 
 #[cfg(test)]
 mod tests {
+    use crate::lox::interpreter::Interpreter;
+
     use super::Lox;
 
     #[test]
@@ -90,7 +93,8 @@ mod tests {
             counter();
             counter();
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -105,7 +109,8 @@ mod tests {
                 a = b;
             }
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -117,7 +122,8 @@ mod tests {
 
             sayHi("Dear", "Reader");
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -125,7 +131,8 @@ mod tests {
         let input = r#"
             print clock();
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -136,7 +143,8 @@ mod tests {
                 var a = a;
             }
         "#;
-        assert!(Lox::run(input).is_err());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_err());
     }
 
     #[test]
@@ -151,7 +159,8 @@ mod tests {
                 print fib(i);
             }
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -177,7 +186,8 @@ mod tests {
             print b;
             print c;
         "#;
-        assert!(Lox::run(input).is_ok());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 
     #[test]
@@ -188,7 +198,8 @@ mod tests {
             var a = "second";
         }
         "#;
-        assert!(Lox::run(input).is_err());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_err());
     }
 
     #[test]
@@ -196,6 +207,47 @@ mod tests {
         let input = r#"
             return "at top level";
         "#;
-        assert!(Lox::run(input).is_err());
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_err());
+    }
+
+    #[test]
+    fn class_decl() {
+        let input = r#"
+            class DevonshireCream {
+                serveOn() {
+                    return "Scones";
+                }
+            }
+            print DevonshireCream;
+        "#;
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
+    }
+
+    #[test]
+    fn class_instance() {
+        let input = r#"
+            class Bagel {}
+            var bagel = Bagel();
+            print bagel;
+        "#;
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
+    }
+
+    #[test]
+    fn class_property() {
+        let input = r#"
+            class Bacon {
+                    eat() {
+                        print "Crunch crunch crunch!";
+                    }
+                }
+                
+                Bacon().eat();
+        "#;
+        let mut interpreter = Interpreter::new();
+        assert!(Lox::run(input, &mut interpreter).is_ok());
     }
 }

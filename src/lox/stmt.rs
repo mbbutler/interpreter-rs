@@ -5,12 +5,12 @@ use super::{expr::Expr, scanner::Token};
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Block(Vec<Stmt>),
-    Expression(Expr),
-    Function {
+    Class {
         name: Token,
-        params: Vec<Token>,
-        body: Vec<Stmt>,
+        methods: Vec<Function>,
     },
+    Expression(Expr),
+    Function(Function),
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
@@ -30,6 +30,13 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
 }
 
 impl Display for Stmt {

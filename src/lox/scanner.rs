@@ -113,7 +113,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&'a mut self) -> Result<&[Token], Vec<ScanError>> {
+    pub fn scan_tokens(&'a mut self) -> Result<&'a [Token], Vec<ScanError>> {
         while self.chars.peek().is_some() {
             self.start = self.current;
             self.scan_token();

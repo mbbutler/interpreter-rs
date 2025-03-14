@@ -19,12 +19,25 @@ pub enum Expr {
         paren: Token,
         arguments: Vec<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
     Grouping(Box<Expr>),
     Literal(Value),
     Logical {
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
+    This {
+        id: usize,
+        keyword: Token,
     },
     Unary {
         operator: Token,
@@ -58,6 +71,7 @@ impl Display for Expr {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Self::Get { object, name } => write!(f, "{object}.{}", &name.lexeme),
             Self::Grouping(expr) => write!(f, "(group {expr})"),
             Self::Literal(literal) => write!(f, "{literal}"),
             Self::Logical {
@@ -65,6 +79,12 @@ impl Display for Expr {
                 operator,
                 right,
             } => write!(f, "{left} {} {right}", operator.lexeme),
+            Self::Set {
+                object,
+                name,
+                value,
+            } => write!(f, "{object}.{} = {value}", &name.lexeme),
+            Self::This { id: _, keyword } => write!(f, "{}", &keyword.lexeme),
             Self::Unary { operator, right } => write!(f, "({} {right})", operator.lexeme),
             Self::Variable { id: _, name } => write!(f, "{}", name.lexeme),
         }

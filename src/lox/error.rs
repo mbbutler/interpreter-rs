@@ -4,7 +4,6 @@ use std::{
 };
 
 use super::{
-    environment::Environment,
     scanner::{Token, TokenType},
     value::Value,
 };
@@ -157,8 +156,8 @@ impl Display for RuntimeError {
     }
 }
 
-impl From<PoisonError<RwLockWriteGuard<'_, Environment>>> for RuntimeException {
-    fn from(value: PoisonError<RwLockWriteGuard<'_, Environment>>) -> Self {
+impl<T> From<PoisonError<RwLockWriteGuard<'_, T>>> for RuntimeException {
+    fn from(value: PoisonError<RwLockWriteGuard<'_, T>>) -> Self {
         Self::Error(RuntimeError {
             token: Token::default(),
             msg: format!("RwLock is poisoned for writing: {value}"),
@@ -166,8 +165,8 @@ impl From<PoisonError<RwLockWriteGuard<'_, Environment>>> for RuntimeException {
     }
 }
 
-impl From<PoisonError<RwLockReadGuard<'_, Environment>>> for RuntimeException {
-    fn from(value: PoisonError<RwLockReadGuard<'_, Environment>>) -> Self {
+impl<T> From<PoisonError<RwLockReadGuard<'_, T>>> for RuntimeException {
+    fn from(value: PoisonError<RwLockReadGuard<'_, T>>) -> Self {
         Self::Error(RuntimeError {
             token: Token::default(),
             msg: format!("RwLock is poisoned for reading: {value}"),

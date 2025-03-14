@@ -1,6 +1,12 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use super::{error::ResolverError, expr::Expr, scanner::Token, stmt::Stmt, INTERPRETER};
+use super::{
+    error::ResolverError,
+    expr::Expr,
+    interpreter::Interpreter,
+    scanner::Token,
+    stmt::{Function, Stmt},
+};
 
 pub type ResolverResult = Result<(), ResolverError>;
 
@@ -9,15 +15,34 @@ enum FunctionType {
     #[default]
     None,
     Function,
+    Initializer,
+    Method,
 }
 
-#[derive(Default)]
-pub struct Resolver {
+#[derive(Default, Copy, Clone)]
+enum ClassType {
+    #[default]
+    None,
+    Class,
+}
+
+pub struct Resolver<'a> {
     scopes: Vec<HashMap<String, bool>>,
     current_function: FunctionType,
+    interpreter: &'a mut Interpreter,
+    current_class: ClassType,
 }
 
-impl Resolver {
+impl<'a> Resolver<'a> {
+    pub fn new(interpreter: &'a mut Interpreter) -> Self {
+        Self {
+            scopes: Vec::new(),
+            current_function: FunctionType::None,
+            interpreter,
+            current_class: ClassType::None,
+        }
+    }
+
     pub fn resolve_stmts(&mut self, stmts: &[Stmt]) -> ResolverResult {
         for stmt in stmts {
             self.resolve_stmt(stmt)?;
@@ -33,11 +58,33 @@ impl Resolver {
                 self.end_scope();
                 Ok(())
             }
-            Stmt::Expression(expr) => self.resolve_expr(expr),
-            Stmt::Function { name, params, body } => {
+            Stmt::Class { name, methods } => {
+                let enclosing_class = self.current_class;
+                self.current_class = ClassType::Class;
                 self.declare(name)?;
                 self.define(name);
-                self.resolve_function(params, body, FunctionType::Function)
+                self.begin_scope();
+                self.scopes
+                    .last_mut()
+                    .expect("Scopes is empty")
+                    .insert("this".to_string(), true);
+                for method in methods {
+                    let declaration = if &method.name.lexeme == "init" {
+                        FunctionType::Initializer
+                    } else {
+                        FunctionType::Method
+                    };
+                    self.resolve_function(method, declaration)?;
+                }
+                self.end_scope();
+                self.current_class = enclosing_class;
+                Ok(())
+            }
+            Stmt::Expression(expr) => self.resolve_expr(expr),
+            Stmt::Function(func) => {
+                self.declare(&func.name)?;
+                self.define(&func.name);
+                self.resolve_function(func, FunctionType::Function)
             }
             Stmt::If {
                 condition,
@@ -61,6 +108,12 @@ impl Resolver {
                     ));
                 }
                 if let Some(expr) = value {
+                    if let FunctionType::Initializer = self.current_function {
+                        return Err(ResolverError::new(
+                            keyword.to_owned(),
+                            "Can't return a value from an initializer.".to_string(),
+                        ));
+                    }
                     self.resolve_expr(expr)
                 } else {
                     Ok(())
@@ -106,6 +159,7 @@ impl Resolver {
                 }
                 Ok(())
             }
+            Expr::Get { object, name: _ } => self.resolve_expr(object),
             Expr::Grouping(expr) => self.resolve_expr(expr),
             Expr::Literal(_) => Ok(()),
             Expr::Logical {
@@ -116,6 +170,21 @@ impl Resolver {
                 self.resolve_expr(left)?;
                 self.resolve_expr(right)
             }
+            Expr::Set {
+                object,
+                name: _,
+                value,
+            } => {
+                self.resolve_expr(object)?;
+                self.resolve_expr(value)
+            }
+            Expr::This { id, keyword } => match self.current_class {
+                ClassType::None => Err(ResolverError::new(
+                    keyword.to_owned(),
+                    "Can't use 'this' outside of a class.".to_string(),
+                )),
+                ClassType::Class => self.resolve_local(id, keyword),
+            },
             Expr::Unary { operator: _, right } => self.resolve_expr(right),
             Expr::Variable { id, name } => {
                 if !self.scopes.is_empty()
@@ -132,20 +201,15 @@ impl Resolver {
         }
     }
 
-    fn resolve_function(
-        &mut self,
-        params: &[Token],
-        body: &[Stmt],
-        func_type: FunctionType,
-    ) -> ResolverResult {
+    fn resolve_function(&mut self, func: &Function, func_type: FunctionType) -> ResolverResult {
         let enclosing_function = self.current_function;
         self.current_function = func_type;
         self.begin_scope();
-        for param in params {
+        for param in &func.params {
             self.declare(param)?;
             self.define(param);
         }
-        self.resolve_stmts(body)?;
+        self.resolve_stmts(&func.body)?;
         self.end_scope();
         self.current_function = enclosing_function;
         Ok(())
@@ -154,10 +218,7 @@ impl Resolver {
     fn resolve_local(&mut self, id: &usize, name: &Token) -> ResolverResult {
         for (depth, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
-                INTERPRETER
-                    .lock()
-                    .expect("Unable to lock INTERPRETER.")
-                    .resolve(id, depth)?;
+                self.interpreter.resolve(id, depth)?;
             }
         }
         Ok(())

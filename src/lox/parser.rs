@@ -4,7 +4,7 @@ use super::{
     error::ParseError,
     expr::Expr,
     scanner::{Token, TokenType},
-    stmt::Stmt,
+    stmt::{Function, Stmt},
     value::Value,
 };
 
@@ -46,13 +46,36 @@ impl<'a> Parser<'a> {
     }
 
     fn declaration(&mut self) -> ParserResult<Stmt> {
-        if self.match_t_types(&[TokenType::Fun]) {
+        if self.match_t_types(&[TokenType::Class]) {
+            self.class_declaration()
+        } else if self.match_t_types(&[TokenType::Fun]) {
             self.function("function")
         } else if self.match_t_types(&[TokenType::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
+    }
+
+    fn class_declaration(&mut self) -> ParserResult<Stmt> {
+        let name = self.consume(&TokenType::Identifier, "Expect class name.".to_string())?;
+        self.consume(
+            &TokenType::LeftBrace,
+            "Expect '{' before class body".to_string(),
+        )?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            let Stmt::Function(f) = self.function("method")? else {
+                #[allow(unreachable_code)]
+                !unreachable!("function() returned a Stmt variant other than Stmt::Function")
+            };
+            methods.push(f);
+        }
+        self.consume(
+            &TokenType::RightBrace,
+            "Expect '}' after class body.".to_string(),
+        )?;
+        Ok(Stmt::Class { name, methods })
     }
 
     fn function(&mut self, kind: &str) -> ParserResult<Stmt> {
@@ -87,7 +110,7 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body."),
         )?;
         let body = self.block()?;
-        Ok(Stmt::Function { name, params, body })
+        Ok(Stmt::Function(Function { name, params, body }))
     }
 
     fn var_declaration(&mut self) -> ParserResult<Stmt> {
@@ -170,7 +193,7 @@ impl<'a> Parser<'a> {
             body = Stmt::Block(vec![body, Stmt::Expression(increment)]);
         }
 
-        let condition = condition.unwrap_or_else(|| Expr::Literal(Value::Bool(true)));
+        let condition = condition.unwrap_or(Expr::Literal(Value::Bool(true)));
 
         body = Stmt::While {
             condition,
@@ -257,25 +280,29 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
-        self.assgnment()
+        self.assignment()
     }
 
-    fn assgnment(&mut self) -> ParserResult<Expr> {
+    fn assignment(&mut self) -> ParserResult<Expr> {
         let expr = self.or()?;
         if self.match_t_types(&[TokenType::Equal]) {
             let equals = self.previous().to_owned();
-            let value = self.assgnment()?;
-            if let Expr::Variable { id, name } = expr {
-                Ok(Expr::Assign {
+            let value = self.assignment()?;
+            match expr {
+                Expr::Variable { id, name } => Ok(Expr::Assign {
                     id,
                     name,
                     value: Box::new(value),
-                })
-            } else {
-                Err(ParseError::new(
+                }),
+                Expr::Get { object, name } => Ok(Expr::Set {
+                    object,
+                    name,
+                    value: Box::new(value),
+                }),
+                _ => Err(ParseError::new(
                     equals,
                     "Invalid assignment target.".to_string(),
-                ))
+                )),
             }
         } else {
             Ok(expr)
@@ -389,6 +416,15 @@ impl<'a> Parser<'a> {
         loop {
             if self.match_t_types(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_t_types(&[TokenType::Dot]) {
+                let name = self.consume(
+                    &TokenType::Identifier,
+                    "Expect property name after '.'.".to_string(),
+                )?;
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name,
+                };
             } else {
                 break;
             }
@@ -444,6 +480,10 @@ impl<'a> Parser<'a> {
                 )?;
                 Ok(Expr::Grouping(Box::new(expr)))
             }
+            TokenType::This => Ok(Expr::This {
+                id: NEXT_EXPR_ID.fetch_add(1, Ordering::Relaxed),
+                keyword: self.previous().to_owned(),
+            }),
             _ => Err(ParseError::new(
                 next.to_owned(),
                 "Expect expression.".to_string(),

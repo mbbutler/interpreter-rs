@@ -1,21 +1,18 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, rc::Rc, sync::RwLock};
 
 use super::{error::RuntimeException, interpreter::RuntimeResult, scanner::Token, value::Value};
 
 #[derive(Default, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
-    enclosing: Option<Arc<RwLock<Environment>>>,
+    enclosing: Option<Rc<RwLock<Environment>>>,
 }
 
 impl Environment {
-    pub fn new(enclosing: &Arc<RwLock<Environment>>) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self {
+    pub fn new(enclosing: &Rc<RwLock<Environment>>) -> Rc<RwLock<Self>> {
+        Rc::new(RwLock::new(Self {
             values: HashMap::new(),
-            enclosing: Some(Arc::clone(enclosing)),
+            enclosing: Some(Rc::clone(enclosing)),
         }))
     }
 
@@ -58,21 +55,19 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&self, distance: usize, token: &Token) -> RuntimeResult<Value> {
+    pub fn get_at(&self, distance: usize, name: &str) -> RuntimeResult<Value> {
         if distance == 0 {
-            match self.values.get(&token.lexeme) {
-                Some(value) => Ok(value.to_owned()),
-                None => Err(RuntimeException::new_error(
-                    token.to_owned(),
-                    format!("Undefined variable '{}'.", token.lexeme),
-                )),
-            }
+            Ok(self
+                .values
+                .get(name)
+                .map(|val| val.to_owned())
+                .unwrap_or_else(|| panic!("Undefined variable '{name}'.")))
         } else {
             self.enclosing
                 .as_ref()
                 .expect("Attempted to access None enclosing Environment.")
                 .read()?
-                .get_at(distance - 1, token)
+                .get_at(distance - 1, name)
         }
     }
 

@@ -4,13 +4,16 @@ use std::{
 };
 
 use super::{
-    error::RuntimeException, interpreter::RuntimeResult, lox_callable::LoxCallable, scanner::Token,
+    error::RuntimeException, interpreter::RuntimeResult, lox_callable::CallableFn,
+    lox_class::LoxClass, lox_instance::LoxInstance, scanner::Token,
 };
 
 #[derive(Clone, Debug)]
 pub enum Value {
     Bool(bool),
-    Callable(LoxCallable),
+    Callable(CallableFn),
+    Class(LoxClass),
+    Instance(LoxInstance),
     Nil,
     Number(f64),
     String(String),
@@ -168,6 +171,8 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Callable(func) => write!(f, "{func}"),
+            Value::Class(class) => write!(f, "{class}"),
+            Value::Instance(instance) => write!(f, "{instance}"),
             Value::Number(n) => {
                 if n.fract() == 0.0 {
                     write!(f, "{}", *n as isize)

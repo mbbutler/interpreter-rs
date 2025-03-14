@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock},
+    rc::Rc,
+    sync::RwLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -8,7 +9,9 @@ use super::{
     environment::Environment,
     error::RuntimeException,
     expr::Expr,
-    lox_callable::{LoxCallable, LoxCallableFn},
+    lox_callable::{CallableFn, LoxCallable},
+    lox_class::LoxClass,
+    lox_function::LoxFunction,
     resolver::ResolverResult,
     scanner::{Token, TokenType},
     stmt::Stmt,
@@ -20,17 +23,17 @@ pub type RuntimeResult<T> = Result<T, RuntimeException>;
 #[derive(Default)]
 pub struct Interpreter {
     #[allow(unused)]
-    pub globals: Arc<RwLock<Environment>>,
-    pub environment: Arc<RwLock<Environment>>,
+    pub globals: Rc<RwLock<Environment>>,
+    pub environment: Rc<RwLock<Environment>>,
     pub locals: HashMap<usize, usize>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        let globals = Arc::new(RwLock::new(Environment::default()));
+        let globals = Rc::new(RwLock::new(Environment::default()));
         globals.write().unwrap().define(
             "clock",
-            Value::Callable(LoxCallable::new_native(0, |_, _| {
+            Value::Callable(CallableFn::new_native(0, |_, _| {
                 Ok(Value::Number(
                     SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -39,7 +42,7 @@ impl Interpreter {
                 ))
             })),
         );
-        let environment = Arc::clone(&globals);
+        let environment = Rc::clone(&globals);
         Self {
             globals,
             environment,
@@ -60,17 +63,25 @@ impl Interpreter {
                 let new_environment = Environment::new(&self.environment);
                 self.execute_block(statements, new_environment)?;
             }
+            Stmt::Class { name, methods } => {
+                let mut env = self.environment.write()?;
+                env.define(&name.lexeme, Value::Nil);
+                let mut methods_map = HashMap::new();
+                for method in methods {
+                    methods_map.insert(
+                        method.name.lexeme.clone(),
+                        LoxFunction::new(method, &self.environment, &method.name.lexeme == "init"),
+                    );
+                }
+                let class = LoxClass::new(&name.lexeme, methods_map);
+                env.assign(name, Value::Class(class))?;
+            }
             Stmt::Expression(expr) => {
                 self.evaluate(expr)?;
             }
-            Stmt::Function { name, params, body } => {
-                let function = Value::Callable(LoxCallable::new_lox(
-                    Box::new(name.to_owned()),
-                    params.clone(),
-                    body.clone(),
-                    &self.environment,
-                ));
-                self.environment.write()?.define(&name.lexeme, function);
+            Stmt::Function(f) => {
+                let function = Value::Callable(CallableFn::new_lox(f, &self.environment, false));
+                self.environment.write()?.define(&f.name.lexeme, function);
             }
             Stmt::If {
                 condition,
@@ -114,13 +125,13 @@ impl Interpreter {
     pub fn execute_block(
         &mut self,
         statements: &[Stmt],
-        environment: Arc<RwLock<Environment>>,
+        environment: Rc<RwLock<Environment>>,
     ) -> RuntimeResult<()> {
-        let previous = Arc::clone(&self.environment);
+        let previous = Rc::clone(&self.environment);
         self.environment = environment;
         for stmt in statements {
             self.execute(stmt).inspect_err(|_| {
-                self.environment = Arc::clone(&previous);
+                self.environment = Rc::clone(&previous);
             })?;
         }
         self.environment = previous;
@@ -182,26 +193,48 @@ impl Interpreter {
                     args.push(self.evaluate(argument)?);
                 }
 
-                if let Value::Callable(callee) = callee {
-                    if args.len() != callee.arity() {
-                        Err(RuntimeException::new_error(
-                            paren.to_owned(),
-                            format!(
-                                "Expected {} arguments but got {}.",
-                                callee.arity(),
-                                args.len()
-                            ),
-                        ))
-                    } else {
-                        callee.call(self, &args)
+                match callee {
+                    Value::Callable(callee) => {
+                        if args.len() != callee.arity() {
+                            Err(RuntimeException::new_error(
+                                paren.to_owned(),
+                                format!(
+                                    "Expected {} arguments but got {}.",
+                                    callee.arity(),
+                                    args.len()
+                                ),
+                            ))
+                        } else {
+                            callee.call(self, &args)
+                        }
                     }
-                } else {
-                    Err(RuntimeException::new_error(
+                    Value::Class(class) => {
+                        if args.len() != class.arity() {
+                            Err(RuntimeException::new_error(
+                                paren.to_owned(),
+                                format!(
+                                    "Expected {} arguments but got {}.",
+                                    class.arity(),
+                                    args.len()
+                                ),
+                            ))
+                        } else {
+                            class.call(self, &args)
+                        }
+                    }
+                    _ => Err(RuntimeException::new_error(
                         paren.to_owned(),
                         "Can only call functions and classes.".to_string(),
-                    ))
+                    )),
                 }
             }
+            Expr::Get { object, name } => match self.evaluate(object)? {
+                Value::Instance(instance) => instance.get(name),
+                _ => Err(RuntimeException::new_error(
+                    name.to_owned(),
+                    "Only instances have properties.".to_string(),
+                )),
+            },
             Expr::Grouping(expr) => self.evaluate(expr),
             Expr::Literal(value) => Ok(value.to_owned()),
             Expr::Logical {
@@ -219,6 +252,22 @@ impl Interpreter {
                 }
                 self.evaluate(right)
             }
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => match self.evaluate(object)? {
+                Value::Instance(mut instance) => {
+                    let value = self.evaluate(value)?;
+                    instance.set(name, value.clone());
+                    Ok(value)
+                }
+                _ => Err(RuntimeException::new_error(
+                    name.to_owned(),
+                    "Only instances have fields.".to_string(),
+                )),
+            },
+            Expr::This { id, keyword } => self.look_up_var(keyword, id),
             Expr::Unary { operator, right } => {
                 let right = self.evaluate(right)?;
                 match operator.t_type {
@@ -233,7 +282,7 @@ impl Interpreter {
 
     fn look_up_var(&self, name: &Token, id: &usize) -> RuntimeResult<Value> {
         match self.locals.get(id) {
-            Some(distance) => self.environment.read()?.get_at(*distance, name),
+            Some(distance) => self.environment.read()?.get_at(*distance, &name.lexeme),
             None => self.globals.read()?.get(name),
         }
     }
