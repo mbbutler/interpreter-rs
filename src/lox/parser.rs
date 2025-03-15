@@ -59,6 +59,18 @@ impl<'a> Parser<'a> {
 
     fn class_declaration(&mut self) -> ParserResult<Stmt> {
         let name = self.consume(&TokenType::Identifier, "Expect class name.".to_string())?;
+        let superclass = if self.match_t_types(&[TokenType::Less]) {
+            self.consume(
+                &TokenType::Identifier,
+                "Expect superclass name.".to_string(),
+            )?;
+            Some(Expr::Variable {
+                id: NEXT_EXPR_ID.fetch_add(1, Ordering::Relaxed),
+                name: self.previous().to_owned(),
+            })
+        } else {
+            None
+        };
         self.consume(
             &TokenType::LeftBrace,
             "Expect '{' before class body".to_string(),
@@ -75,7 +87,11 @@ impl<'a> Parser<'a> {
             &TokenType::RightBrace,
             "Expect '}' after class body.".to_string(),
         )?;
-        Ok(Stmt::Class { name, methods })
+        Ok(Stmt::Class {
+            name,
+            methods,
+            superclass,
+        })
     }
 
     fn function(&mut self, kind: &str) -> ParserResult<Stmt> {
@@ -479,6 +495,19 @@ impl<'a> Parser<'a> {
                     "Expect ')' after expression.".to_string(),
                 )?;
                 Ok(Expr::Grouping(Box::new(expr)))
+            }
+            TokenType::Super => {
+                let keyword = self.previous().to_owned();
+                self.consume(&TokenType::Dot, "Expect '.' after 'super'.".to_string())?;
+                let method = self.consume(
+                    &TokenType::Identifier,
+                    "Expect superclass method name.".to_string(),
+                )?;
+                Ok(Expr::Super {
+                    id: NEXT_EXPR_ID.fetch_add(1, Ordering::Relaxed),
+                    keyword,
+                    method,
+                })
             }
             TokenType::This => Ok(Expr::This {
                 id: NEXT_EXPR_ID.fetch_add(1, Ordering::Relaxed),

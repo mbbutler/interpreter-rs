@@ -24,6 +24,7 @@ enum ClassType {
     #[default]
     None,
     Class,
+    Subclass,
 }
 
 pub struct Resolver<'a> {
@@ -58,11 +59,40 @@ impl<'a> Resolver<'a> {
                 self.end_scope();
                 Ok(())
             }
-            Stmt::Class { name, methods } => {
+            Stmt::Class {
+                name,
+                methods,
+                superclass,
+            } => {
                 let enclosing_class = self.current_class;
                 self.current_class = ClassType::Class;
                 self.declare(name)?;
                 self.define(name);
+                if let Some(superclass) = superclass {
+                    if let Expr::Variable {
+                        id: _,
+                        name: sc_name,
+                    } = superclass
+                    {
+                        if name.lexeme == sc_name.lexeme {
+                            return Err(ResolverError::new(
+                                sc_name.to_owned(),
+                                "A class can't inherit from itself.".to_string(),
+                            ));
+                        }
+                    }
+                    self.current_class = ClassType::Subclass;
+                    self.resolve_expr(superclass)?;
+                }
+
+                if superclass.is_some() {
+                    self.begin_scope();
+                    self.scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert("super".to_string(), true);
+                }
+
                 self.begin_scope();
                 self.scopes
                     .last_mut()
@@ -77,6 +107,11 @@ impl<'a> Resolver<'a> {
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();
+
+                if superclass.is_some() {
+                    self.end_scope();
+                }
+
                 self.current_class = enclosing_class;
                 Ok(())
             }
@@ -178,12 +213,34 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(object)?;
                 self.resolve_expr(value)
             }
+            Expr::Super {
+                id,
+                keyword,
+                method: _,
+            } => {
+                match self.current_class {
+                    ClassType::None => {
+                        return Err(ResolverError::new(
+                            keyword.to_owned(),
+                            "Can't use 'super' outside of a class.".to_string(),
+                        ))
+                    }
+                    ClassType::Class => {
+                        return Err(ResolverError::new(
+                            keyword.to_owned(),
+                            "Can't user 'super' in a class with no superclass".to_string(),
+                        ))
+                    }
+                    ClassType::Subclass => {}
+                }
+                self.resolve_local(id, keyword)
+            }
             Expr::This { id, keyword } => match self.current_class {
                 ClassType::None => Err(ResolverError::new(
                     keyword.to_owned(),
                     "Can't use 'this' outside of a class.".to_string(),
                 )),
-                ClassType::Class => self.resolve_local(id, keyword),
+                ClassType::Class | ClassType::Subclass => self.resolve_local(id, keyword),
             },
             Expr::Unary { operator: _, right } => self.resolve_expr(right),
             Expr::Variable { id, name } => {

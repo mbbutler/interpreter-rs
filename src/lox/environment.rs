@@ -5,7 +5,7 @@ use super::{error::RuntimeException, interpreter::RuntimeResult, scanner::Token,
 #[derive(Default, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
-    enclosing: Option<Rc<RefCell<Environment>>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {

@@ -12,18 +12,26 @@ use super::{
 pub struct LoxClass {
     pub name: String,
     pub methods: HashMap<String, LoxFunction>,
+    pub superclass: Option<Box<LoxClass>>,
 }
 
 impl LoxClass {
-    pub fn new(name: &str, methods: HashMap<String, LoxFunction>) -> Self {
+    pub fn new(
+        name: &str,
+        superclass: Option<LoxClass>,
+        methods: HashMap<String, LoxFunction>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             methods,
+            superclass: superclass.map(Box::new),
         }
     }
 
     pub fn find_method(&self, name: &str) -> Option<&LoxFunction> {
-        self.methods.get(name)
+        self.methods
+            .get(name)
+            .or_else(|| self.superclass.as_ref().and_then(|sc| sc.find_method(name)))
     }
 }
 

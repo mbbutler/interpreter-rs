@@ -63,9 +63,34 @@ impl Interpreter {
                 let new_environment = Environment::new(&self.environment);
                 self.execute_block(statements, new_environment)?;
             }
-            Stmt::Class { name, methods } => {
-                let mut env = self.environment.borrow_mut();
-                env.define(&name.lexeme, Value::Nil);
+            Stmt::Class {
+                name,
+                methods,
+                superclass,
+            } => {
+                let superclass = if let Some(sc) = superclass {
+                    let Value::Class(superclass) = self.evaluate(&sc)? else {
+                        return Err(RuntimeException::new_error(
+                            name.to_owned(),
+                            "Superclass must be a class.".to_string(),
+                        ));
+                    };
+                    Some(superclass)
+                } else {
+                    None
+                };
+
+                self.environment
+                    .borrow_mut()
+                    .define(&name.lexeme, Value::Nil);
+
+                if let Some(superclass) = superclass.as_ref() {
+                    self.environment = Environment::new(&self.environment);
+                    self.environment
+                        .borrow_mut()
+                        .define("super", Value::Class(superclass.clone()));
+                }
+
                 let mut methods_map = HashMap::new();
                 for method in methods {
                     methods_map.insert(
@@ -73,8 +98,21 @@ impl Interpreter {
                         LoxFunction::new(method, &self.environment, &method.name.lexeme == "init"),
                     );
                 }
-                let class = LoxClass::new(&name.lexeme, methods_map);
-                env.assign(name, Value::Class(class))?;
+                let is_superclass = superclass.is_some();
+                let class = LoxClass::new(&name.lexeme, superclass, methods_map);
+                if is_superclass {
+                    let env = self
+                        .environment
+                        .borrow()
+                        .enclosing
+                        .as_ref()
+                        .unwrap()
+                        .clone();
+                    self.environment = env;
+                }
+                self.environment
+                    .borrow_mut()
+                    .assign(name, Value::Class(class))?;
             }
             Stmt::Expression(expr) => {
                 self.evaluate(expr)?;
@@ -269,6 +307,27 @@ impl Interpreter {
                     "Only instances have fields.".to_string(),
                 )),
             },
+            Expr::Super {
+                id,
+                keyword: _,
+                method,
+            } => {
+                let distance = self.locals.get(id).unwrap();
+                let Value::Class(superclass) =
+                    self.environment.borrow().get_at(*distance, "super")?
+                else {
+                    unreachable!()
+                };
+                let Value::Instance(object) =
+                    self.environment.borrow().get_at(distance - 1, "this")?
+                else {
+                    unreachable!()
+                };
+                let method = superclass.find_method(&method.lexeme).unwrap();
+                method
+                    .bind(&object)
+                    .map(|f| Value::Callable(CallableFn::Lox(f)))
+            }
             Expr::This { id, keyword } => self.look_up_var(keyword, id),
             Expr::Unary { operator, right } => {
                 let right = self.evaluate(right)?;

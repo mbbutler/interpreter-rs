@@ -8,6 +8,7 @@ pub enum Stmt {
     Class {
         name: Token,
         methods: Vec<Function>,
+        superclass: Option<Expr>,
     },
     Expression(Expr),
     Function(Function),

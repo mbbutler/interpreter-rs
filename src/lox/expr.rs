@@ -35,6 +35,11 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    Super {
+        id: usize,
+        keyword: Token,
+        method: Token,
+    },
     This {
         id: usize,
         keyword: Token,
@@ -84,6 +89,11 @@ impl Display for Expr {
                 name,
                 value,
             } => write!(f, "{object}.{} = {value}", &name.lexeme),
+            Self::Super {
+                id: _,
+                keyword: _,
+                method,
+            } => write!(f, "super.{}", method.lexeme),
             Self::This { id: _, keyword } => write!(f, "{}", &keyword.lexeme),
             Self::Unary { operator, right } => write!(f, "({} {right})", operator.lexeme),
             Self::Variable { id: _, name } => write!(f, "{}", name.lexeme),
