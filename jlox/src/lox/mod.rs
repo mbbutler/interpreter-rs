@@ -54,7 +54,7 @@ impl Lox {
     pub fn run_prompt() {
         let mut interpreter = Interpreter::new();
         let stdin = io::stdin();
-        println!("=== Welcome to the Lox REPL ===");
+        println!("=== Welcome to the JLox REPL ===");
         loop {
             print!("  > ");
             let _ = io::stdout().flush();
