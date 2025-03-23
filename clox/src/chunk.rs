@@ -1,4 +1,17 @@
-use crate::{op_code::OpCode, value::Value};
+use crate::value::Value;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+#[derive(Debug, IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+pub enum Op {
+    Constant,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Negate,
+    Return,
+}
 
 #[derive(Default)]
 pub struct Chunk {
@@ -19,12 +32,9 @@ impl Chunk {
     }
 
     pub fn free(&mut self) {
-        self.code.clear();
-        self.code.shrink_to_fit();
-        self.lines.clear();
-        self.lines.shrink_to_fit();
-        self.constants.clear();
-        self.constants.shrink_to_fit();
+        self.code = Vec::new();
+        self.lines = Vec::new();
+        self.constants = Vec::new();
     }
 
     pub fn disassemble(&self, name: &str) {
@@ -35,7 +45,15 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction(&self, offset: usize) -> usize {
+    pub fn as_ptr(&self) -> *const u8 {
+        self.code.as_ptr()
+    }
+
+    pub fn read_constant(&self, index: u8) -> Value {
+        self.constants[index as usize]
+    }
+
+    pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{offset:0>4} ");
         if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
             print!("   | ");
@@ -43,10 +61,15 @@ impl Chunk {
             print!("{:>4} ", self.lines[offset]);
         }
         let instruction = self.code[offset];
-        match OpCode::try_from(instruction) {
+        match Op::try_from(instruction) {
             Ok(opcode) => match opcode {
-                OpCode::Constant => self.constant_instruction("OP_CONSTANT", offset),
-                OpCode::Return => self.simple_instruction("OP_RETURN", offset),
+                Op::Constant => self.constant_instruction("OP_CONSTANT", offset),
+                Op::Add => self.simple_instruction("OP_ADD", offset),
+                Op::Subtract => self.simple_instruction("OP_SUBTRACT", offset),
+                Op::Multiply => self.simple_instruction("OP_MULTIPLY", offset),
+                Op::Divide => self.simple_instruction("OP_DIVIDE", offset),
+                Op::Negate => self.simple_instruction("OP_NEGATE", offset),
+                Op::Return => self.simple_instruction("OP_RETURN", offset),
             },
             Err(_) => {
                 println!("Unknown opcode value: {instruction}");
