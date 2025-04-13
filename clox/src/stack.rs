@@ -1,5 +1,5 @@
 use crate::{
-    error::{InterpretError, InterpretResult},
+    error::{InterpretError, Result},
     value::Value,
 };
 
@@ -18,7 +18,7 @@ impl Stack {
         }
     }
 
-    pub fn push(&mut self, value: Value) -> InterpretResult<()> {
+    pub fn push(&mut self, value: Value) -> Result<()> {
         if self.offset >= STACK_MAX {
             Err(InterpretError::RuntimeError(String::from(
                 "Stack overflow.",
@@ -30,8 +30,8 @@ impl Stack {
         }
     }
 
-    pub fn pop(&mut self) -> InterpretResult<Value> {
-        if self.offset <= 0 {
+    pub fn pop(&mut self) -> Result<Value> {
+        if self.offset == 0 {
             Err(InterpretError::RuntimeError(String::from(
                 "Stack underflow.",
             )))
@@ -43,5 +43,14 @@ impl Stack {
 
     pub fn iter(&self) -> impl Iterator<Item = &Value> {
         self.data.iter().take(self.offset)
+    }
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        Self {
+            data: [0.0; STACK_MAX],
+            offset: 0,
+        }
     }
 }

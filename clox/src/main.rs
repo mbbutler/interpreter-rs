@@ -1,34 +1,48 @@
 mod chunk;
+mod compiler;
 mod error;
+mod scanner;
 mod stack;
 mod value;
 mod vm;
 
-use chunk::{Chunk, Op};
+use std::io::{BufRead, Write};
+
 use vm::VM;
 
 fn main() {
-    let mut chunk = Chunk::default();
-    let constant = chunk.add_constant(1.2);
-    chunk.write(Op::Constant.into(), 123);
-    chunk.write(constant, 123);
+    let args: Vec<String> = std::env::args().collect();
+    match args.len() {
+        1 => repl(),
+        2 => run_file(&args[1]),
+        _ => println!("Usage is: cargo run <path/to/script>"),
+    }
+}
 
-    let constant = chunk.add_constant(3.4);
-    chunk.write(Op::Constant.into(), 123);
-    chunk.write(constant, 123);
+fn repl() {
+    let mut vm = VM::default();
+    loop {
+        let stdin = std::io::stdin();
+        loop {
+            print!("> ");
+            std::io::stdout().flush().unwrap();
+            if let Some(Ok(input)) = stdin.lock().lines().next() {
+                if !input.is_empty() {
+                    if let Err(err) = vm.interpret(&input) {
+                        eprintln!("{err}");
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+    }
+}
 
-    chunk.write(Op::Add.into(), 123);
-
-    let constant = chunk.add_constant(5.6);
-    chunk.write(Op::Constant.into(), 123);
-    chunk.write(constant, 123);
-
-    chunk.write(Op::Divide.into(), 123);
-    chunk.write(Op::Negate.into(), 123);
-
-    chunk.write(Op::Return.into(), 123);
-
-    if let Err(err) = VM::interpret(&chunk) {
-        eprintln!("Error: {err}");
+fn run_file(path: &str) {
+    let input = std::fs::read_to_string(path).unwrap();
+    let mut vm = VM::default();
+    if let Err(err) = vm.interpret(&input) {
+        eprint!("{err}");
     }
 }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::Chars, sync::LazyLock};
 
-use itertools::{peek_nth, PeekNth};
+use itertools::{PeekNth, peek_nth};
 
 use super::{error::ScanError, value::Value};
 

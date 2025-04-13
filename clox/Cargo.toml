@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 log = "0.4.26"
 num_enum = "0.7.3"
+itertools = "0.14.0"

@@ -69,7 +69,7 @@ impl Interpreter {
                 superclass,
             } => {
                 let superclass = if let Some(sc) = superclass {
-                    let Value::Class(superclass) = self.evaluate(&sc)? else {
+                    let Value::Class(superclass) = self.evaluate(sc)? else {
                         return Err(RuntimeException::new_error(
                             name.to_owned(),
                             "Superclass must be a class.".to_string(),

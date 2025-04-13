@@ -1,8 +1,11 @@
+use std::sync::LazyLock;
+
 use clox::binary_op;
 
 use crate::{
     chunk::{Chunk, Op},
-    error::InterpretResult,
+    compiler::Compiler,
+    error::Result,
     stack::Stack,
     value::Value,
 };
@@ -13,10 +16,12 @@ pub struct VM<'a> {
     stack: Stack,
 }
 
+static DEFAULT_CHUNK: LazyLock<Chunk> = LazyLock::new(Chunk::default);
+
 impl<'a> VM<'a> {
-    pub fn interpret(chunk: &Chunk) -> InterpretResult<()> {
-        let mut vm = VM::new(chunk);
-        vm.run()
+    pub fn interpret(&mut self, input: &str) -> Result<()> {
+        Compiler::compile(input)?;
+        todo!()
     }
 
     fn new(chunk: &'a Chunk) -> Self {
@@ -28,7 +33,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn run(&mut self) -> InterpretResult<()> {
+    fn run(&mut self) -> Result<()> {
         loop {
             #[cfg(debug_assertions)]
             {
@@ -63,15 +68,14 @@ impl<'a> VM<'a> {
     }
 
     fn read_byte(&mut self) -> u8 {
-        let byte = unsafe {
+        unsafe {
             let byte = *self.ip;
             self.ip = self.ip.add(1);
             byte
-        };
-        byte
+        }
     }
 
-    fn read_op_code(&mut self) -> InterpretResult<Op> {
+    fn read_op_code(&mut self) -> Result<Op> {
         Ok(self.read_byte().try_into()?)
     }
 
@@ -79,15 +83,25 @@ impl<'a> VM<'a> {
         self.chunk.read_constant(self.read_byte())
     }
 
-    fn push(&mut self, value: Value) -> InterpretResult<()> {
+    fn push(&mut self, value: Value) -> Result<()> {
         self.stack.push(value)
     }
 
-    fn pop(&mut self) -> InterpretResult<Value> {
+    fn pop(&mut self) -> Result<Value> {
         self.stack.pop()
     }
 
     fn ip_offset(&self) -> usize {
         unsafe { self.ip.offset_from(self.chunk.as_ptr()) as usize }
+    }
+}
+
+impl Default for VM<'_> {
+    fn default() -> Self {
+        Self {
+            chunk: &DEFAULT_CHUNK,
+            ip: DEFAULT_CHUNK.as_ptr(),
+            stack: Stack::default(),
+        }
     }
 }

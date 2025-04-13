@@ -2,8 +2,9 @@ use std::fmt::Display;
 
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 
-pub type InterpretResult<T> = Result<T, InterpretError>;
+pub type Result<T> = std::result::Result<T, InterpretError>;
 
+#[derive(Debug)]
 pub enum InterpretError {
     CompileError(String),
     RuntimeError(String),

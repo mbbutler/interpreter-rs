@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 use super::{
     error::ResolverError,
@@ -223,13 +223,13 @@ impl<'a> Resolver<'a> {
                         return Err(ResolverError::new(
                             keyword.to_owned(),
                             "Can't use 'super' outside of a class.".to_string(),
-                        ))
+                        ));
                     }
                     ClassType::Class => {
                         return Err(ResolverError::new(
                             keyword.to_owned(),
                             "Can't user 'super' in a class with no superclass".to_string(),
-                        ))
+                        ));
                     }
                     ClassType::Subclass => {}
                 }
