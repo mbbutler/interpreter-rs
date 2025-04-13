@@ -5,7 +5,6 @@ use crate::error::{InterpretError, Result};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
-    // Single-character tokens.
     LeftParen,
     RightParen,
     LeftBrace,
@@ -17,8 +16,6 @@ pub enum TokenType {
     Semicolon,
     Slash,
     Star,
-
-    // One or two character tokens.
     Bang,
     BangEqual,
     Equal,
@@ -27,13 +24,9 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
-
-    // Literals.
     Identifier,
     String,
     Number,
-
-    // Keywords.
     And,
     Class,
     Else,
@@ -50,7 +43,6 @@ pub enum TokenType {
     True,
     Var,
     While,
-
     #[default]
     Eof,
 }
@@ -267,10 +259,15 @@ impl<'a> Iterator for Scanner<'a> {
         }
 
         self.skip_whitespace();
-        let (start, c) = self.iter.next().or_else(|| {
+        let Some((start, c)) = self.iter.next() else {
             self.is_done = true;
-            None
-        })?;
+            return Some(Ok(Token::new(
+                TokenType::Eof,
+                &self.src[self.src.len()..],
+                self.line,
+            )));
+        };
+
         match c {
             c if c.is_ascii_alphabetic() => Some(Ok(self.identifier(start))),
             c if c.is_ascii_digit() => Some(Ok(self.number(start))),
@@ -363,6 +360,8 @@ impl<'a> Iterator for Scanner<'a> {
 
 #[cfg(test)]
 pub mod test {
+    use itertools::Itertools;
+
     use super::{Scanner, Token, TokenType};
 
     #[test]
@@ -411,8 +410,11 @@ pub mod test {
             Token::new(TokenType::Eof, "", 2),
         ];
         let scanner = Scanner::new(s);
-        for (l, r) in tokens.iter().zip(scanner) {
-            assert_eq!(l, &r.unwrap());
+        for pair in scanner.zip_longest(tokens.iter()) {
+            match pair {
+                itertools::EitherOrBoth::Both(l, r) => assert_eq!(&l.unwrap(), r),
+                _ => panic!("Iterators are not the same size"),
+            };
         }
     }
 }
